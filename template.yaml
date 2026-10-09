@@ -1,0 +1,431 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Can My Scooter Cross? - photo-based waterlogging verdicts and flood-safe routing
+
+Parameters:
+  BedrockModelId:
+    Type: String
+    # Check what is enabled: aws bedrock list-inference-profiles --region ap-south-1
+    Default: apac.anthropic.claude-sonnet-4-20250514-v1:0
+  BedrockRegion:
+    Type: String
+    Default: ap-south-1
+  AllowedOrigin:
+    Type: String
+    Default: "*"   # set to https://main.<appid>.amplifyapp.com after the first Amplify deploy
+  AlertEmail:
+    Type: String
+    Default: ""
+    Description: Optional team inbox subscribed to all alerts (for the demo)
+  SocialModelId:
+    Type: String
+    Default: apac.anthropic.claude-sonnet-4-20250514-v1:0
+    Description: Text model for social-post extraction (a cheaper Haiku-class profile is fine)
+  AppUrl:
+    Type: String
+    Default: ""
+    Description: Public app URL used in WhatsApp replies (the Amplify URL)
+  WhatsAppTopicArn:
+    Type: String
+    Default: ""
+    Description: SNS topic of an AWS End User Messaging Social WhatsApp number (optional)
+  RedditClientId: { Type: String, Default: "" }
+  RedditClientSecret: { Type: String, Default: "", NoEcho: true }
+  XBearerToken: { Type: String, Default: "", NoEcho: true, Description: "Optional, X API is paid" }
+  YouTubeApiKey: { Type: String, Default: "", NoEcho: true }
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, ""]]
+  HasWhatsAppTopic: !Not [!Equals [!Ref WhatsAppTopicArn, ""]]
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures: [arm64]
+    CodeUri: backend/
+    Timeout: 15
+    MemorySize: 512
+    Tracing: Active
+    Environment:
+      Variables:
+        PHOTOS_BUCKET: !Sub "${AWS::StackName}-photos-${AWS::AccountId}"
+        DATA_BUCKET: !Sub "${AWS::StackName}-photos-${AWS::AccountId}"
+        REPORTS_TABLE: !Ref ReportsTable
+        HOTSPOTS_TABLE: !Ref HotspotsTable
+        SUBSCRIPTIONS_TABLE: !Ref SubscriptionsTable
+        RATELIMIT_TABLE: !Ref RateLimitTable
+        ALERTS_TOPIC_ARN: !Ref AlertsTopic
+        ALLOWED_ORIGIN: !Ref AllowedOrigin
+        BEDROCK_MODEL_ID: !Ref BedrockModelId
+        BEDROCK_REGION: !Ref BedrockRegion
+        SOCIAL_MODEL_ID: !Ref SocialModelId
+        WA_SESSIONS_TABLE: !Ref WhatsAppSessionsTable
+        WA_SSM_PREFIX: /scooter-cross/whatsapp
+        APP_URL: !Ref AppUrl
+
+Resources:
+  # ---------------- Storage ----------------
+  # Name is built with !Sub (not !Ref) everywhere to avoid the S3-event circular dependency.
+  PhotosBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-photos-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods: [POST, GET]
+            AllowedOrigins: ["*"]
+            AllowedHeaders: ["*"]
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-live-uploads
+            Prefix: uploads/
+            Status: Enabled
+            ExpirationInDays: 30
+
+  ReportsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: reportId, AttributeType: S }
+        - { AttributeName: cell, AttributeType: S }
+        - { AttributeName: cityMode, AttributeType: S }
+        - { AttributeName: ts, AttributeType: N }
+      KeySchema:
+        - { AttributeName: reportId, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: byCell
+          KeySchema:
+            - { AttributeName: cell, KeyType: HASH }
+            - { AttributeName: ts, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: byCity
+          KeySchema:
+            - { AttributeName: cityMode, KeyType: HASH }
+            - { AttributeName: ts, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      TimeToLiveSpecification: { AttributeName: expiresAt, Enabled: true }
+      StreamSpecification: { StreamViewType: NEW_AND_OLD_IMAGES }  # for escalation (feature C)
+
+  HotspotsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: city, AttributeType: S }
+        - { AttributeName: hotspotId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: city, KeyType: HASH }
+        - { AttributeName: hotspotId, KeyType: RANGE }
+
+  SubscriptionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: subId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: subId, KeyType: HASH }
+
+  RateLimitTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: key, AttributeType: S }
+      KeySchema:
+        - { AttributeName: key, KeyType: HASH }
+      TimeToLiveSpecification: { AttributeName: expiresAt, Enabled: true }
+
+  WhatsAppSessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: user, AttributeType: S }
+      KeySchema:
+        - { AttributeName: user, KeyType: HASH }
+      TimeToLiveSpecification: { AttributeName: expiresAt, Enabled: true }
+
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: FloodAlerts
+
+  TeamAlertSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn: !Ref AlertsTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  # ---------------- API ----------------
+  Api:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins: [!Ref AllowedOrigin]
+        AllowMethods: [GET, POST, OPTIONS]
+        AllowHeaders: [content-type]
+        MaxAge: 600
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 50
+        ThrottlingRateLimit: 20
+
+  UploadUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions.upload_url.app.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref ReportsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref RateLimitTable }
+        - Statement:
+            - Effect: Allow
+              Action: s3:PutObject
+              Resource: !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/uploads/*"
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /reports/upload-url, Method: POST }
+
+  AnalyzeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions.analyze.app.handler
+      Timeout: 90
+      MemorySize: 1024
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref ReportsTable }
+        - DynamoDBReadPolicy: { TableName: !Ref SubscriptionsTable }
+        - SNSPublishMessagePolicy: { TopicName: !GetAtt AlertsTopic.TopicName }
+        - Statement:
+            - Effect: Allow
+              Action: [s3:GetObject]
+              Resource: !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/*"
+            - Effect: Allow
+              Action: [rekognition:DetectModerationLabels]
+              Resource: "*"
+            - Effect: Allow   # WhatsApp verdict replies
+              Action: [ssm:GetParameters, social-messaging:SendWhatsAppMessage]
+              Resource: "*"
+            - Effect: Allow
+              # Converse uses bedrock:InvokeModel. Cross-region inference profiles route to
+              # several regions, so the foundation-model resource is wildcarded by region.
+              Action: [bedrock:InvokeModel]
+              Resource:
+                - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
+                - "arn:aws:bedrock:*::foundation-model/*"
+      Events:
+        Upload:
+          Type: S3
+          Properties:
+            Bucket: !Ref PhotosBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - { Name: prefix, Value: uploads/ }
+
+  ReportsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions.reports.app.handler
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref ReportsTable }
+        - DynamoDBReadPolicy: { TableName: !Ref HotspotsTable }
+        - Statement:
+            - Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/*"
+      Events:
+        GetOne:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: "/reports/{id}", Method: GET }
+        List:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /reports, Method: GET }
+        Spots:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /spots, Method: GET }
+        Timeline:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /demo/timeline, Method: GET }
+
+  VoteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions.vote.app.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref ReportsTable }
+      Events:
+        Vote:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: "/reports/{id}/vote", Method: POST }
+
+  RouteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions.route.app.handler
+      MemorySize: 1769   # 1 full vCPU: graph parse + A* are CPU bound
+      Timeout: 29
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref ReportsTable }
+        - DynamoDBReadPolicy: { TableName: !Ref HotspotsTable }
+        - Statement:
+            - Effect: Allow
+              Action: s3:GetObject
+              Resource:
+                - !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/graphs/*"
+                - !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/bus/*"
+      Events:
+        Route:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /route, Method: POST }
+        BusImpact:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /bus-impact, Method: GET }
+
+  HotspotsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions.hotspots.app.handler
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref HotspotsTable }
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /hotspots, Method: GET }
+
+  RiskSchedulerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions.risk_scheduler.app.handler
+      Timeout: 60
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref HotspotsTable }
+        - SNSPublishMessagePolicy: { TopicName: !GetAtt AlertsTopic.TopicName }
+        - Statement:
+            - Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/demo/*"
+      Events:
+        Every15Min:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: rate(15 minutes)
+
+  SubscribeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions.subscribe.app.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref SubscriptionsTable }
+        - Statement:
+            - Effect: Allow
+              Action: sns:Subscribe
+              Resource: !Ref AlertsTopic
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /subscriptions, Method: POST }
+
+  SocialIngestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions.social_ingest.app.handler
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          REDDIT_CLIENT_ID: !Ref RedditClientId
+          REDDIT_CLIENT_SECRET: !Ref RedditClientSecret
+          X_BEARER_TOKEN: !Ref XBearerToken
+          YOUTUBE_API_KEY: !Ref YouTubeApiKey
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref ReportsTable }
+        - DynamoDBReadPolicy: { TableName: !Ref HotspotsTable }
+        - Statement:
+            - Effect: Allow
+              Action: s3:PutObject
+              Resource: !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/social/*"
+            - Effect: Allow
+              Action: [bedrock:InvokeModel]
+              Resource:
+                - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
+                - "arn:aws:bedrock:*::foundation-model/*"
+            - Effect: Allow   # Amazon Location Service Places v2
+              Action: [geo-places:Geocode]
+              Resource: !Sub "arn:aws:geo-places:${AWS::Region}::provider/default"
+      Events:
+        Every10Min:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: rate(10 minutes)
+
+  WhatsAppFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions.whatsapp.app.handler
+      Timeout: 20
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref ReportsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref WhatsAppSessionsTable }
+        - DynamoDBReadPolicy: { TableName: !Ref HotspotsTable }
+        - Statement:
+            - Effect: Allow
+              Action: [s3:PutObject, s3:GetObject]
+              Resource:
+                - !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/wa-pending/*"
+                - !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/wa-media/*"
+                - !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/uploads/*"
+            - Effect: Allow
+              Action: s3:ListBucket
+              Resource: !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}"
+            - Effect: Allow
+              Action: [ssm:GetParameters]
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/scooter-cross/whatsapp/*"
+            - Effect: Allow
+              Action: [social-messaging:SendWhatsAppMessage, social-messaging:GetWhatsAppMessageMedia]
+              Resource: "*"
+      Events:
+        Twilio:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /whatsapp/twilio, Method: POST }
+
+  WhatsAppSnsSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasWhatsAppTopic
+    Properties:
+      TopicArn: !Ref WhatsAppTopicArn
+      Protocol: lambda
+      Endpoint: !GetAtt WhatsAppFunction.Arn
+
+  WhatsAppSnsPermission:
+    Type: AWS::Lambda::Permission
+    Condition: HasWhatsAppTopic
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref WhatsAppFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref WhatsAppTopicArn
+
+Outputs:
+  WhatsAppTwilioWebhook:
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/whatsapp/twilio"
+  ApiUrl:
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com"
+  PhotosBucketName:
+    Value: !Sub "${AWS::StackName}-photos-${AWS::AccountId}"
+  ReportsTableName:
+    Value: !Ref ReportsTable
+  HotspotsTableName:
+    Value: !Ref HotspotsTable
+  AlertsTopicArn:
+    Value: !Ref AlertsTopic

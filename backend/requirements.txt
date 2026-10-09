@@ -1,0 +1,2 @@
+# Lambda runtime deps (boto3 is already in the Lambda runtime)
+Pillow==10.4.0

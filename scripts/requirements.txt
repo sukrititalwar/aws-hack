@@ -1,0 +1,6 @@
+# Local scripts only (not deployed to Lambda)
+osmnx>=2.0,<3
+boto3
+Pillow
+pytest
+moto[dynamodb,s3]
