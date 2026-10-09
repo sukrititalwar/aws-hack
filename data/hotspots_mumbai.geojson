@@ -1,0 +1,16 @@
+{
+  "type": "FeatureCollection",
+  "_note": "Chronic waterlogging points. Coordinates are APPROXIMATE and 'verified' is false until a teammate checks each one on the map and pastes a news article URL into source_url. Do not demo unverified points.",
+  "features": [
+    {"type": "Feature", "geometry": {"type": "Point", "coordinates": [72.8503, 19.1135]},
+     "properties": {"hotspotId": "andheri-subway", "name": "Andheri Subway", "name_hi": "अंधेरी सबवे", "kind": "underpass", "verified": false, "source_url": "", "check": "snapped to the OSM vehicle underpass (highway=residential, tunnel) under the railway; confirm this is the Andheri Subway"}},
+    {"type": "Feature", "geometry": {"type": "Point", "coordinates": [72.8426, 19.0905]},
+     "properties": {"hotspotId": "milan-subway", "name": "Milan Subway", "name_hi": "मिलन सबवे", "kind": "underpass", "verified": false, "source_url": ""}},
+    {"type": "Feature", "geometry": {"type": "Point", "coordinates": [72.8430, 19.0035]},
+     "properties": {"hotspotId": "hindmata", "name": "Hindmata, Dadar", "name_hi": "हिंदमाता, दादर", "kind": "junction", "verified": false, "source_url": ""}},
+    {"type": "Feature", "geometry": {"type": "Point", "coordinates": [72.8620, 19.0420]},
+     "properties": {"hotspotId": "sion-circle", "name": "Sion (Gandhi Market / King's Circle)", "name_hi": "सायन", "kind": "junction", "verified": false, "source_url": ""}},
+    {"type": "Feature", "geometry": {"type": "Point", "coordinates": [72.8565, 19.0290]},
+     "properties": {"hotspotId": "kings-circle", "name": "King's Circle", "name_hi": "किंग्स सर्कल", "kind": "junction", "verified": false, "source_url": ""}}
+  ]
+}

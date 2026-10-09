@@ -1,0 +1,230 @@
+{
+ "type": "FeatureCollection",
+ "_note": "Ground truth: each point's position is checked against OpenStreetMap (see osm_match) and source_url is a news report naming it as a waterlogging spot. verified=false means no citation yet: seed_hotspots.py skips those unless --include-unverified.",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.28303,
+     9.98156
+    ]
+   },
+   "properties": {
+    "hotspotId": "mg-road-padma",
+    "name": "MG Road (Padma Jn)",
+    "name_hi": "एमजी रोड (पद्मा जं.)",
+    "kind": "main_road",
+    "verified": true,
+    "source_url": "https://keralakaumudi.com/en/news/news.php?id=1652579",
+    "osm_match": "OSM 'Padma Junction' on Mahatma Gandhi Road",
+    "note": "Also https://www.thenewsminute.com/kerala/rains-bring-kochi-standstill-trains-delayed-traffic-affected-167382",
+    "aliases": [
+     "MG Road",
+     "M G Road",
+     "Mahatma Gandhi Road"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.28461,
+     9.97688
+    ]
+   },
+   "properties": {
+    "hotspotId": "mg-road-shenoys",
+    "name": "MG Road (Shenoys)",
+    "name_hi": "एमजी रोड (शेनॉयस)",
+    "kind": "main_road",
+    "verified": true,
+    "source_url": "https://keralakaumudi.com/en/news/news.php?id=1652579",
+    "osm_match": "OSM 'Shenoys' on MG Road"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.28567,
+     9.96984
+    ]
+   },
+   "properties": {
+    "hotspotId": "woodlands-jn",
+    "name": "Woodlands Junction",
+    "name_hi": "वुडलैंड्स जंक्शन",
+    "kind": "junction",
+    "verified": true,
+    "source_url": "https://keralakaumudi.com/en/news/news.php?id=1652579",
+    "osm_match": "OSM 'Woodlands Junction'",
+    "aliases": [
+     "Woodlands"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.28606,
+     9.96843
+    ]
+   },
+   "properties": {
+    "hotspotId": "jos-jn",
+    "name": "Jos Junction",
+    "name_hi": "जोस जंक्शन",
+    "kind": "junction",
+    "verified": true,
+    "source_url": "https://keralakaumudi.com/en/news/news.php?id=1652579",
+    "osm_match": "OSM 'Jos Junction' (traffic_signals)",
+    "aliases": [
+     "Jos Junction"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.28797,
+     9.96317
+    ]
+   },
+   "properties": {
+    "hotspotId": "medical-trust",
+    "name": "South / Medical Trust",
+    "name_hi": "साउथ / मेडिकल ट्रस्ट",
+    "kind": "main_road",
+    "verified": true,
+    "source_url": "https://keralakaumudi.com/en/news/news.php?id=1652579",
+    "osm_match": "OSM 'Medical Trust Hospital' bus stop",
+    "aliases": [
+     "Medical Trust",
+     "South overbridge"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.28847,
+     9.97777
+    ]
+   },
+   "properties": {
+    "hotspotId": "ksrtc-stand",
+    "name": "KSRTC bus stand, Ernakulam",
+    "name_hi": "केएसआरटीसी बस स्टैंड",
+    "kind": "junction",
+    "verified": true,
+    "source_url": "https://www.thenewsminute.com/kerala/rains-bring-kochi-standstill-trains-delayed-traffic-affected-167382",
+    "osm_match": "OSM 'KSRTC Station Ernakulam' bus stop (snapped 41 m onto the nearest road)",
+    "aliases": [
+     "KSRTC bus stand",
+     "KSRTC stand"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.30732,
+     10.02509
+    ]
+   },
+   "properties": {
+    "hotspotId": "edappally",
+    "name": "Edappally (Lulu to Toll)",
+    "name_hi": "इडापल्ली",
+    "kind": "main_road",
+    "verified": true,
+    "source_url": "https://keralakaumudi.com/en/news/news.php?id=1652579",
+    "osm_match": "OSM 'Edappally Junction' bus stop",
+    "note": "Also https://www.onmanorama.com/news/kerala/2024/05/28/kochi-rain-flooded-roads-hits-normal-life-cloudburst-suspected.html",
+    "aliases": [
+     "Edappally",
+     "Edapally"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.29001,
+     9.99281
+    ]
+   },
+   "properties": {
+    "hotspotId": "kaloor",
+    "name": "Kaloor",
+    "name_hi": "कलूर",
+    "kind": "junction",
+    "verified": true,
+    "source_url": "https://www.onmanorama.com/news/kerala/2024/05/28/kochi-rain-flooded-roads-hits-normal-life-cloudburst-suspected.html",
+    "osm_match": "Nominatim: Kaloor metro, Banerji Road",
+    "aliases": [
+     "Kaloor"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.31803,
+     9.9681
+    ]
+   },
+   "properties": {
+    "hotspotId": "vyttila",
+    "name": "Vyttila Junction",
+    "name_hi": "वाइटिला जंक्शन",
+    "kind": "junction",
+    "verified": true,
+    "source_url": "https://www.onmanorama.com/news/kerala/2024/05/28/kochi-rain-flooded-roads-hits-normal-life-cloudburst-suspected.html",
+    "osm_match": "OSM 'Vyttila Junction' bus stop",
+    "aliases": [
+     "Vyttila"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.30642,
+     9.96731
+    ]
+   },
+   "properties": {
+    "hotspotId": "kadavanthra",
+    "name": "Kadavanthra",
+    "name_hi": "कडवंत्रा",
+    "kind": "main_road",
+    "verified": true,
+    "source_url": "https://www.onmanorama.com/news/kerala/2024/05/28/kochi-rain-flooded-roads-hits-normal-life-cloudburst-suspected.html",
+    "osm_match": "Nominatim: Kadavanthra metro",
+    "aliases": [
+     "Kadavanthra"
+    ]
+   }
+  }
+ ]
+}

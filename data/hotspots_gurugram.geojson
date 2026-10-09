@@ -1,0 +1,188 @@
+{
+ "type": "FeatureCollection",
+ "_note": "Ground truth: each point's position is checked against OpenStreetMap (see osm_match) and source_url is a news report naming it as a waterlogging spot. verified=false means no citation yet: seed_hotspots.py skips those unless --include-unverified.",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.01018,
+     28.43597
+    ]
+   },
+   "properties": {
+    "hotspotId": "hero-honda-chowk",
+    "name": "Hero Honda Chowk underpass",
+    "name_hi": "हीरो होंडा चौक अंडरपास",
+    "kind": "underpass",
+    "verified": true,
+    "source_url": "https://www.tribuneindia.com/news/haryana/50-key-spots-prone-to-waterlogging-identified-268042",
+    "osm_match": "OSM 'Hero Honda Underpass' (tunnel=yes)",
+    "note": "Also in https://www.tribuneindia.com/news/haryana/municipal-corporation-of-gurugram-gears-up-for-rains-identifies-32-waterlogging-prone-spots-485502",
+    "aliases": [
+     "Hero Honda Chowk",
+     "Hero Honda"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.03357,
+     28.4456
+    ]
+   },
+   "properties": {
+    "hotspotId": "rajiv-chowk",
+    "name": "Rajiv Chowk",
+    "name_hi": "राजीव चौक",
+    "kind": "underpass",
+    "verified": true,
+    "source_url": "https://www.theweek.in/wire-updates/national/2025/08/17/des55-ncr-gurugram-civic-issues.html",
+    "osm_match": "OSM 'Rajiv Chowk Underpass' (tunnel=yes)",
+    "aliases": [
+     "Rajiv Chowk",
+     "Rajeev Chowk"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.03072,
+     28.47804
+    ]
+   },
+   "properties": {
+    "hotspotId": "sheetla-mata-road",
+    "name": "Sheetla Mata Road",
+    "name_hi": "शीतला माता रोड",
+    "kind": "main_road",
+    "verified": true,
+    "source_url": "https://www.tribuneindia.com/news/haryana/waterlogging-hotspots-down-from-90-to-7-in-gurugram-claims-gmda/",
+    "osm_match": "Nominatim: Sheetla Mata Mandir on New Mata Mandir Road (approximate point on the road) (snapped 42 m onto the nearest road)",
+    "aliases": [
+     "Sheetla Mata Road",
+     "Sheetla Mata"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.08557,
+     28.49599
+    ]
+   },
+   "properties": {
+    "hotspotId": "jwala-mill-road",
+    "name": "Jwala Mill Road",
+    "name_hi": "ज्वाला मिल रोड",
+    "kind": "main_road",
+    "verified": true,
+    "source_url": "https://www.tribuneindia.com/news/haryana/waterlogging-hotspots-down-from-90-to-7-in-gurugram-claims-gmda/",
+    "osm_match": "OSM 'Jwala Mill Marg' e-rickshaw stand (point on the road)",
+    "aliases": [
+     "Jwala Mill"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.09132,
+     28.47152
+    ]
+   },
+   "properties": {
+    "hotspotId": "chakkarpur",
+    "name": "Sector 28 near Chakkarpur",
+    "name_hi": "सेक्टर 28, चक्करपुर",
+    "kind": "lane",
+    "verified": true,
+    "source_url": "https://www.tribuneindia.com/news/haryana/waterlogging-hotspots-down-from-90-to-7-in-gurugram-claims-gmda/",
+    "osm_match": "Nominatim: Chakkarpur Wazirabad Bundh, Sector 28 (approximate)",
+    "aliases": [
+     "Chakkarpur"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.09751,
+     28.50466
+    ]
+   },
+   "properties": {
+    "hotspotId": "ambience-mall",
+    "name": "NH-48 at Ambience Mall",
+    "name_hi": "एम्बिएंस मॉल, NH-48",
+    "kind": "main_road",
+    "verified": true,
+    "source_url": "https://www.theweek.in/wire-updates/national/2025/08/17/des55-ncr-gurugram-civic-issues.html",
+    "osm_match": "Nominatim: Ambience Mall, Golf Drive (snapped 36 m onto the nearest road)",
+    "aliases": [
+     "Ambience Mall"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.09524,
+     28.4631
+    ]
+   },
+   "properties": {
+    "hotspotId": "golf-course-underpass",
+    "name": "Golf Course Road underpass",
+    "name_hi": "गोल्फ कोर्स रोड अंडरपास",
+    "kind": "underpass",
+    "verified": true,
+    "source_url": "https://www.tribuneindia.com/news/haryana/municipal-corporation-of-gurugram-gears-up-for-rains-identifies-32-waterlogging-prone-spots-485502",
+    "osm_match": "OSM 'Golf Course Road Underpass' (tunnel=yes)",
+    "note": "Source names Golf Course Road; which underpass floods is not stated",
+    "aliases": [
+     "Golf Course Road"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.03694,
+     28.42863
+    ]
+   },
+   "properties": {
+    "hotspotId": "subhash-chowk",
+    "name": "Subhash Chowk underpass",
+    "name_hi": "सुभाष चौक अंडरपास",
+    "kind": "underpass",
+    "verified": false,
+    "source_url": "https://www.tribuneindia.com/news/haryana/50-key-spots-prone-to-waterlogging-identified-268042",
+    "osm_match": "OSM 'Shubhash Chowk Underpass' (tunnel=yes)",
+    "note": "Not named in the sources found; add a citation",
+    "aliases": [
+     "Subhash Chowk"
+    ]
+   }
+  }
+ ]
+}

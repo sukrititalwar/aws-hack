@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.aws-sam/
+.pytest_cache/
+data/demo_cache/
+frontend/node_modules/
+frontend/dist/
+frontend/dev-dist/
+frontend/.env.local
+.DS_Store
+cache/
+samconfig.toml.bak

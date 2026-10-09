@@ -1,0 +1,146 @@
+{
+ "type": "FeatureCollection",
+ "_note": "Ground truth: each point's position is checked against OpenStreetMap (see osm_match) and source_url is a news report naming it as a waterlogging spot. verified=false means no citation yet: seed_hotspots.py skips those unless --include-unverified.",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.2224,
+     28.6364
+    ]
+   },
+   "properties": {
+    "hotspotId": "minto-bridge",
+    "name": "Minto Bridge underpass",
+    "name_hi": "मिंटो ब्रिज अंडरपास",
+    "kind": "underpass",
+    "verified": true,
+    "source_url": "https://www.theweek.in/wire-updates/national/2025/05/25/des32-dl-minto-bridge.html",
+    "osm_match": "Vivekanand Marg (OSM name of Minto Road, highway=secondary) where it passes under the railway (Overpass road x rail intersection)",
+    "note": "Also named in LG inspection: https://lg.delhi.gov.in/node/9193",
+    "aliases": [
+     "Minto Bridge",
+     "Minto Road"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.29812,
+     28.49911
+    ]
+   },
+   "properties": {
+    "hotspotId": "pul-prahladpur",
+    "name": "Pul Prahladpur underpass",
+    "name_hi": "पुल प्रह्लादपुर अंडरपास",
+    "kind": "underpass",
+    "verified": true,
+    "source_url": "https://lg.delhi.gov.in/node/9193",
+    "osm_match": "OSM 'Badarpur Railway Underpass' (highway=primary, tunnel=yes) beside Pul Prahladpur",
+    "note": "Outside the Delhi routing area; shown on map only",
+    "aliases": [
+     "Pul Prahladpur",
+     "Prahladpur"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.16571,
+     28.66959
+    ]
+   },
+   "properties": {
+    "hotspotId": "zakhira",
+    "name": "Zakhira underpass",
+    "name_hi": "ज़खीरा अंडरपास",
+    "kind": "underpass",
+    "verified": true,
+    "source_url": "https://www.etvbharat.com/english/state/delhi/delhi-pwd-identifies-seven-critical-waterlogging-points/na20210802220845760",
+    "osm_match": "OSM 'Rohtak Road Underpass' (tunnel=yes) at Zakhira flyover",
+    "note": "Outside the Delhi routing area; shown on map only",
+    "aliases": [
+     "Zakhira"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.24074,
+     28.61718
+    ]
+   },
+   "properties": {
+    "hotspotId": "pragati-tunnel",
+    "name": "Pragati Maidan tunnel",
+    "name_hi": "प्रगति मैदान टनल",
+    "kind": "underpass",
+    "verified": false,
+    "source_url": "https://www.theweek.in/wire-updates/national/2025/07/29/des26-dl-3rdld-weather.html",
+    "osm_match": "OSM 'Pragati Maidan Tunnel' (tunnel=yes)",
+    "note": "Add a cited source that names this tunnel before demoing",
+    "aliases": [
+     "Pragati Maidan tunnel"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.23409,
+     28.56548
+    ]
+   },
+   "properties": {
+    "hotspotId": "moolchand",
+    "name": "Moolchand underpass",
+    "name_hi": "मूलचंद अंडरपास",
+    "kind": "underpass",
+    "verified": false,
+    "source_url": "https://www.theweek.in/wire-updates/national/2025/07/29/des26-dl-3rdld-weather.html",
+    "osm_match": "OSM 'Moolchand Underpass' (tunnel=yes)",
+    "note": "Add a cited source",
+    "aliases": [
+     "Moolchand"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.24104,
+     28.62819
+    ]
+   },
+   "properties": {
+    "hotspotId": "ito",
+    "name": "ITO",
+    "name_hi": "आईटीओ",
+    "kind": "junction",
+    "verified": false,
+    "source_url": "https://www.theweek.in/wire-updates/national/2025/07/29/des26-dl-3rdld-weather.html",
+    "osm_match": "ITO (Nominatim)",
+    "note": "Add a cited source",
+    "aliases": [
+     "ITO"
+    ]
+   }
+  }
+ ]
+}
