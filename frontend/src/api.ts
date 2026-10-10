@@ -1,5 +1,5 @@
 import type { StyleSpecification } from "maplibre-gl";
-import type { BusImpact, Hotspot, LonLat, Mode, Report, RouteResult, Spot, Vehicle, Weather } from "./types";
+import type { BusImpact, DrainMetrics, DrainRow, Hotspot, LonLat, Mode, Report, RouteResult, Spot, Vehicle, Weather } from "./types";
 
 export const API = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 export const CITIES: Record<string, { label: string; hi: string; center: LonLat }> = {
@@ -24,7 +24,7 @@ async function call<T>(path: string, init?: RequestInit & { timeoutMs?: number }
     const r = await fetch(API + path, {
       ...init,
       signal: ctrl.signal,
-      headers: init?.body ? { "Content-Type": "application/json" } : undefined,
+      headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}), ...(init?.headers as Record<string, string> | undefined) },
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
@@ -51,6 +51,18 @@ export const api = {
   },
 
   report: (id: string) => call<Report>(`/reports/${id}`),
+
+  // ---- DrainReady ----
+  drainUploadUrl: (b: { lat: number; lon: number; note?: string; deviceId: string }) =>
+    call<{ reportId: string; uploadUrl: string; fields: Record<string, string> }>("/drains/upload-url", {
+      method: "POST", body: JSON.stringify({ ...b, city: CITY }) }),
+  drains: (all = false) => call<{ drains: DrainRow[] }>(`/drains?city=${CITY}${all ? "&status=all" : ""}`),
+  drain: (id: string) => call<DrainRow>(`/drains/${id}`),
+  drainMetrics: () => call<DrainMetrics>(`/drains/metrics?city=${CITY}`),
+  assignDrain: (id: string, worker: string, token: string) =>
+    call<{ ok: boolean }>(`/drains/${id}/assign`, { method: "POST", body: JSON.stringify({ worker }), headers: { "x-admin-token": token } }),
+  afterUrl: (id: string, token: string) =>
+    call<{ uploadUrl: string; fields: Record<string, string> }>(`/drains/${id}/after-url`, { method: "POST", body: "{}", headers: { "x-admin-token": token } }),
 
   spots: (mode: Mode, at?: number) =>
     call<{ spots: Spot[]; now: number }>(`/spots?city=${CITY}&mode=${mode}${at ? `&at=${Math.round(at)}` : ""}`),

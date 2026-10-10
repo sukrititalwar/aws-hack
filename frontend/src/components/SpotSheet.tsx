@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { ago, t, type Lang } from "../i18n";
+import { ago, depthBand, t, type Lang } from "../i18n";
 import type { LonLat, Mode, Report, Spot, Vehicle } from "../types";
 import { deviceId } from "../util";
 import ResultCard from "./ResultCard";
@@ -92,9 +92,9 @@ export default function SpotSheet({ spot, mode, known, vehicle, lang, setLang, o
             ? `पिछले 3 घंटे में ${Math.round(spot.rainPast3h ?? 0)} मिमी बारिश। यह जगह अक्सर भरती है, अभी तक किसी ने रिपोर्ट नहीं किया।`
             : `${Math.round(spot.rainPast3h ?? 0)} mm of rain in the last 3 h. This spot usually floods; nobody has reported it yet.`}
         </div>
-        <p className="small">{lang === "hi" ? "अनुमानित" : "Estimated"}: <strong>{spot.depth_low}–{spot.depth_high} cm</strong> ({lang === "hi" ? "कम भरोसा" : "low confidence, so verdicts are stricter"})</p>
-        <BigVerdict verdict={spot.verdicts[vehicle]} vehicle={vehicle} lang={lang} />
-        <VerdictGrid verdicts={spot.verdicts} selected={vehicle} lang={lang} />
+        <p className="small">{lang === "hi" ? "अनुमानित" : "Estimated"}: <strong>{depthBand(spot.depth_low, spot.depth_high)} cm</strong> ({lang === "hi" ? "कम भरोसा" : "low confidence, so verdicts are stricter"})</p>
+        <BigVerdict verdict={spot.verdicts[vehicle]} vehicle={vehicle} lang={lang} inspect />
+        <VerdictGrid verdicts={spot.verdicts} selected={vehicle} lang={lang} inspect />
         {spot.source_url && <p className="small">{lang === "hi" ? "पुराना स्रोत" : "Why this is a known spot"}: <a href={spot.source_url} target="_blank" rel="noreferrer">{new URL(spot.source_url).hostname.replace("www.", "")}</a></p>}
         <div className="actions"><button className="btn primary" onClick={() => onRoute([spot.lon, spot.lat])}>🧭 {t("routeFromHere", lang)}</button></div>
         <p className="disclaimer">⚠️ {lang === "hi" ? "यह बारिश से अनुमान है, फ़ोटो से नहीं। वहाँ हों तो फ़ोटो भेजें।" : "This is a prediction from rainfall, not a photo. If you're there, report it with a photo."}</p>
@@ -108,18 +108,18 @@ export default function SpotSheet({ spot, mode, known, vehicle, lang, setLang, o
       {sources}
       {spot.reportCount > 1 && (
         <p className="small">
-          {lang === "hi" ? "सभी रिपोर्ट मिलाकर" : "Combined from all reports"}: <strong>{spot.depth_low}–{spot.depth_high} cm</strong>
+          {lang === "hi" ? "सभी रिपोर्ट मिलाकर" : "Combined from all reports"}: <strong>{depthBand(spot.depth_low, spot.depth_high)} cm</strong>
         </p>
       )}
       {report?.verdicts ? (
-        <ResultCard report={{ ...report, depth_low: spot.depth_low, depth_high: spot.depth_high,
+        <ResultCard report={{ ...report, depth_low: spot.depth_low, depth_high: spot.depth_high, needs_inspection: report.needs_inspection || spot.needs_inspection,
             verdicts: Object.fromEntries(Object.entries(report.verdicts).map(([k, v]) => [k, { ...v, verdict: spot.verdicts[k as Vehicle] }])) as Report["verdicts"] }}
           vehicle={vehicle} lang={lang} setLang={setLang} onRoute={() => onRoute([spot.lon, spot.lat])}
           footer={votes} />
       ) : (
         <>
-          <BigVerdict verdict={spot.verdicts[vehicle]} vehicle={vehicle} lang={lang} />
-          <VerdictGrid verdicts={spot.verdicts} selected={vehicle} lang={lang} />
+          <BigVerdict verdict={spot.verdicts[vehicle]} vehicle={vehicle} lang={lang} inspect={!!spot.needs_inspection} />
+          <VerdictGrid verdicts={spot.verdicts} selected={vehicle} lang={lang} inspect={!!spot.needs_inspection} />
           {mode === "live" && votes}
           <p className="disclaimer">⚠️ {t("disclaimer", lang)}</p>
         </>

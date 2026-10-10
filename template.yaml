@@ -29,6 +29,12 @@ Parameters:
     Type: String
     Default: ""
     Description: SNS topic of an AWS End User Messaging Social WhatsApp number (optional)
+  AdminToken:
+    Type: String
+    NoEcho: true
+    Default: ""
+    MinLength: 0
+    Description: Shared secret for the DrainReady dispatcher screen (choose a long random string)
   RedditClientId: { Type: String, Default: "" }
   RedditClientSecret: { Type: String, Default: "", NoEcho: true }
   XBearerToken: { Type: String, Default: "", NoEcho: true, Description: "Optional, X API is paid" }
@@ -60,6 +66,8 @@ Globals:
         BEDROCK_REGION: !Ref BedrockRegion
         SOCIAL_MODEL_ID: !Ref SocialModelId
         WA_SESSIONS_TABLE: !Ref WhatsAppSessionsTable
+        DRAINS_TABLE: !Ref DrainsTable
+        ADMIN_TOKEN: !Ref AdminToken
         WA_SSM_PREFIX: /scooter-cross/whatsapp
         APP_URL: !Ref AppUrl
 
@@ -143,6 +151,23 @@ Resources:
         - { AttributeName: key, KeyType: HASH }
       TimeToLiveSpecification: { AttributeName: expiresAt, Enabled: true }
 
+  DrainsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: reportId, AttributeType: S }
+        - { AttributeName: city, AttributeType: S }
+        - { AttributeName: ts, AttributeType: N }
+      KeySchema:
+        - { AttributeName: reportId, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: byCity
+          KeySchema:
+            - { AttributeName: city, KeyType: HASH }
+            - { AttributeName: ts, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+
   WhatsAppSessionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -173,7 +198,7 @@ Resources:
       CorsConfiguration:
         AllowOrigins: [!Ref AllowedOrigin]
         AllowMethods: [GET, POST, OPTIONS]
-        AllowHeaders: [content-type]
+        AllowHeaders: [content-type, x-admin-token]
         MaxAge: 600
       DefaultRouteSettings:
         ThrottlingBurstLimit: 50
@@ -415,6 +440,82 @@ Resources:
       FunctionName: !Ref WhatsAppFunction
       Principal: sns.amazonaws.com
       SourceArn: !Ref WhatsAppTopicArn
+
+  DrainsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions.drains.app.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref DrainsTable }
+        - DynamoDBCrudPolicy: { TableName: !Ref RateLimitTable }
+        - DynamoDBReadPolicy: { TableName: !Ref HotspotsTable }
+        - Statement:
+            - Effect: Allow
+              Action: [s3:PutObject, s3:GetObject]
+              Resource:
+                - !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/drains/*"
+                - !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/drains-after/*"
+      Events:
+        UploadUrl:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /drains/upload-url, Method: POST }
+        List:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /drains, Method: GET }
+        Metrics:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /drains/metrics, Method: GET }
+        One:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: "/drains/{id}", Method: GET }
+        Assign:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: "/drains/{id}/assign", Method: POST }
+        AfterUrl:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: "/drains/{id}/after-url", Method: POST }
+
+  DrainAnalyzeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions.drain_analyze.app.handler
+      Timeout: 90
+      MemorySize: 1024
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref DrainsTable }
+        - Statement:
+            - Effect: Allow
+              Action: s3:GetObject
+              Resource:
+                - !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/drains/*"
+                - !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/drains-after/*"
+            - Effect: Allow
+              Action: [rekognition:DetectModerationLabels]
+              Resource: "*"
+            - Effect: Allow
+              Action: [bedrock:InvokeModel]
+              Resource:
+                - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
+                - "arn:aws:bedrock:*::foundation-model/*"
+      Events:
+        Report:
+          Type: S3
+          Properties:
+            Bucket: !Ref PhotosBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - { Name: prefix, Value: drains/ }
+        After:
+          Type: S3
+          Properties:
+            Bucket: !Ref PhotosBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - { Name: prefix, Value: drains-after/ }
 
 Outputs:
   WhatsAppTwilioWebhook:

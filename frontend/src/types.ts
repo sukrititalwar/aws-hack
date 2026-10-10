@@ -3,9 +3,12 @@ export type Verdict = "GO" | "RISKY" | "NO_GO";
 export type LonLat = [number, number];
 export type Mode = "live" | "demo";
 
+export type Category = "passable" | "potentially_unsafe" | "unsafe" | "requires_inspection";
+
 export interface VehicleVerdict {
   vehicle: Vehicle;
   verdict: Verdict;
+  category?: Category;
   label_en: string;
   label_hi: string;
   why: string;
@@ -30,6 +33,8 @@ export interface Report {
   flowing_water?: boolean;
   hazards?: string[];
   danger?: boolean;
+  needs_inspection?: boolean;
+  inspection_reasons?: string[];
   reasoning?: string;
   reasoning_hi?: string;
   reference_objects?: { object: string; observation: string; implied_depth_cm: number }[];
@@ -54,6 +59,7 @@ export interface Spot {
   confidence: string;
   hazards: string[];
   danger: boolean;
+  needs_inspection?: boolean;
   verdicts: Record<Vehicle, Verdict>;
   reportCount: number;
   reportIds: string[];
@@ -133,4 +139,44 @@ export interface RouteResult {
   note: string;
   snap_m: [number, number];
   compare?: CompareRow[];
+}
+
+export interface DrainRow {
+  groupId: string;
+  city: string;
+  status: "open" | "assigned" | "cleared" | "analysing" | "rejected";
+  lat: number;
+  lon: number;
+  severity: "partial" | "blocked" | null;
+  blockage_type?: string | null;
+  note?: string | null;
+  firstReported: number;
+  assignedTo?: string | null;
+  clearedAt?: number | null;
+  reportCount: number;
+  score: number;
+  reasons: string[];
+  urgent: boolean;
+  rainNext24h: number;
+  nearHotspot?: string | null;
+  // detail only
+  reasoning?: string;
+  reasoning_hi?: string;
+  rejection_reason?: string;
+  photoUrl?: string;
+  afterUrl?: string;
+  afterNote?: string;
+  clearanceVerified?: boolean;
+}
+
+export interface DrainMetrics {
+  reported: number;
+  open: number;
+  assigned: number;
+  cleared: number;
+  median_hours_to_clear: number | null;
+  rain_forecast_cases: number;
+  cleared_before_rain: number;
+  repeat_blockages: number;
+  basis: string;
 }

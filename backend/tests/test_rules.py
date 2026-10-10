@@ -78,7 +78,7 @@ def test_uses_depth_high_worst_case():
 def test_output_shape_and_text():
     r = rules.verdicts_for(a(25))["verdicts"]
     s = r["scooter"]
-    assert set(s) == {"vehicle", "verdict", "label_en", "label_hi", "why", "why_hi"}
+    assert set(s) == {"vehicle", "verdict", "category", "label_en", "label_hi", "why", "why_hi"}
     assert s["label_en"] == "Scooter / bike: Do not cross"
     assert "exhaust" in s["why"] and "25 cm" in s["why"]
     assert set(r) == set(config.VEHICLES)
@@ -88,3 +88,25 @@ def test_worst():
     assert rules.worst(["GO", "RISKY"]) == "RISKY"
     assert rules.worst(["GO", "NO_GO", "RISKY"]) == "NO_GO"
     assert rules.worst([]) == "GO"
+
+
+def test_categories_and_inspection():
+    r = rules.verdicts_for(a(5))
+    assert not r["needs_inspection"] and r["verdicts"]["car"]["category"] == "passable"
+    assert rules.verdicts_for(a(20))["verdicts"]["car"]["category"] == "potentially_unsafe"
+    assert rules.verdicts_for(a(60))["verdicts"]["car"]["category"] == "unsafe"
+    # a GO we are not sure about must never be shown as "passable"
+    low = rules.verdicts_for(a(5, confidence="low", depth_cm_low=0))
+    assert low["needs_inspection"] and "low confidence" in low["inspection_reasons"]
+    assert low["verdicts"]["suv"]["verdict"] == "RISKY"          # escalated, as before
+    wide = rules.verdicts_for(a(5, depth_cm_low=0, reference_objects=[{"object": "kerb"}]))
+    assert not wide["needs_inspection"]
+    wide = rules.verdicts_for(a(45, depth_cm_low=5, reference_objects=[{"object": "kerb"}]))
+    assert wide["needs_inspection"] and "very wide depth range" in wide["inspection_reasons"]
+
+
+def test_no_reference_object_escalates_and_requires_inspection():
+    r = rules.verdicts_for(a(5, reference_objects=[]))
+    assert r["needs_inspection"] and "no reference object visible" in r["inspection_reasons"]
+    assert r["verdicts"]["car"]["verdict"] == "RISKY"
+    assert r["verdicts"]["car"]["category"] == "potentially_unsafe"

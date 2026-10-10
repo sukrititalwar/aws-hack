@@ -75,6 +75,38 @@ def worsen(level: str, steps: int) -> str:
     return LEVELS[min(LEVELS.index(level) + steps, len(LEVELS) - 1)]
 
 
+def inspection_flags(assessment: dict) -> list[str]:
+    """Reasons a depth number should not be trusted. One photo (or a video frame) cannot give
+    reliable metric depth: perspective, reflections and unknown road geometry get in the way.
+    When any of these hold we say "requires inspection" instead of "passable"."""
+    reasons = []
+    if assessment.get("confidence") == "low":
+        reasons.append("low confidence")
+    if assessment.get("image_quality") == "poor":
+        reasons.append("poor image")
+    if "reference_objects" in assessment and not assessment["reference_objects"]:
+        reasons.append("no reference object visible")
+    lo, hi = assessment.get("depth_cm_low"), assessment.get("depth_cm_high")
+    if lo is not None and hi is not None and float(hi) - float(lo) > 30:
+        reasons.append("very wide depth range")
+    return reasons
+
+
+# User-facing categories (never a fabricated centimetre figure on their own).
+CATEGORY_LABELS = {
+    "passable": ("Passable", "पार कर सकते हैं"),
+    "potentially_unsafe": ("Potentially unsafe", "जोखिम भरा"),
+    "unsafe": ("Unsafe", "असुरक्षित"),
+    "requires_inspection": ("Requires inspection", "जाँच ज़रूरी"),
+}
+
+
+def category_of(verdict: str, needs_inspection: bool) -> str:
+    if verdict == "GO":
+        return "requires_inspection" if needs_inspection else "passable"
+    return "potentially_unsafe" if verdict == "RISKY" else "unsafe"
+
+
 def verdicts_for(assessment: dict) -> dict:
     """Return {vehicle: {verdict, label_en, label_hi, why, why_hi}} plus a danger flag.
 
@@ -84,6 +116,10 @@ def verdicts_for(assessment: dict) -> dict:
     hazards = set(assessment.get("hazards") or [])
     fatal = config.FATAL_HAZARD in hazards
     steps, reasons = escalation_steps(assessment)
+    inspect = inspection_flags(assessment)
+    if "no reference object visible" in inspect and "unclear photo" not in reasons:
+        steps += 1
+        reasons.append("no reference object visible")
     d = round(depth)
 
     out = {}
@@ -106,12 +142,14 @@ def verdicts_for(assessment: dict) -> dict:
         out[v] = {
             "vehicle": v,
             "verdict": verdict,
+            "category": category_of(verdict, bool(inspect)),
             "label_en": f"{name_en}: {lab_en}",
             "label_hi": f"{name_hi}: {lab_hi}",
             "why": why,
             "why_hi": why_hi,
         }
-    return {"verdicts": out, "danger": fatal, "escalations": reasons}
+    return {"verdicts": out, "danger": fatal, "escalations": reasons,
+            "needs_inspection": bool(inspect), "inspection_reasons": inspect}
 
 
 def worst(levels) -> str:

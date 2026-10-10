@@ -31,4 +31,5 @@ Field notes:
 - is_flooded_road_photo: false if the photo is not a street, lane or underpass with standing water. Then set rejection_reason, depth 0, and keep other fields minimal.
 - reasoning: 1-2 plain sentences a citizen can read, e.g. "Water reaches the top of the kerb and the lower third of the car tyre, so roughly 15-25 cm."
 - reasoning_hi: the same sentence in simple Hindi (Devanagari).
+- Be honest about limits: perspective, reflections, muddy water and unknown road geometry make metric depth hard. Never output a precise-looking number you cannot justify from a visible reference object. With no usable reference object, set confidence "low" and give a wide range (at least 30 cm wide).
 - depth_cm_low <= depth_cm_high. If you cannot see any reference object, widen the range and set confidence "low".

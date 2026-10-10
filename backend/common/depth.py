@@ -138,3 +138,39 @@ def dhash(image_bytes: bytes, size: int = 8) -> str | None:
         for col in range(size):
             bits = (bits << 1) | (px[row * (size + 1) + col] > px[row * (size + 1) + col + 1])
     return f"{bits:016x}"
+
+
+DRAIN_PROMPT_PATH = os.path.join(os.path.dirname(__file__), "..", "prompts", "drain_prompt.txt")
+
+
+@lru_cache(maxsize=None)
+def drain_prompt() -> str:
+    with open(DRAIN_PROMPT_PATH, encoding="utf-8") as f:
+        return f.read()
+
+
+def classify_drain(image_bytes: bytes, city: str) -> tuple[dict, dict]:
+    """Photo of a drain -> {severity: clear|partial|blocked, blockage_type, ...}. Categories only."""
+    img, fmt = prepare_image(image_bytes)
+    messages = [{"role": "user", "content": [
+        {"image": {"format": fmt, "source": {"bytes": img}}},
+        {"text": f"City: {city}. Assess this drain."}]}]
+    t0 = time.time()
+    last = None
+    for attempt in range(2):
+        r = _bedrock().converse(modelId=config.BEDROCK_MODEL_ID, system=[{"text": drain_prompt()}], messages=messages,
+                                inferenceConfig={"temperature": 0, "maxTokens": 600})
+        text = "".join(c.get("text", "") for c in r["output"]["message"]["content"])
+        try:
+            a = extract_json(text)
+            a["severity"] = a.get("severity") if a.get("severity") in ("clear", "partial", "blocked") else "partial"
+            a["confidence"] = a.get("confidence") if a.get("confidence") in ("low", "medium", "high") else "low"
+            a["is_drain_photo"] = bool(a.get("is_drain_photo", False))
+            usage = r.get("usage", {})
+            return a, {"latency_ms": int((time.time() - t0) * 1000), "input_tokens": usage.get("inputTokens", 0),
+                       "output_tokens": usage.get("outputTokens", 0), "model": config.BEDROCK_MODEL_ID}
+        except (json.JSONDecodeError, ValueError) as e:
+            last = e
+            messages += [{"role": "assistant", "content": [{"text": text or "{}"}]},
+                         {"role": "user", "content": [{"text": "Return only the JSON object, nothing else."}]}]
+    raise ValueError(f"model did not return valid JSON: {last}")

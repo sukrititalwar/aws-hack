@@ -95,6 +95,7 @@ def summarise(members: list[dict], now: float) -> dict:
         "confidence": confidence,
         "hazards": hazards,
         "danger": result["danger"],
+        "needs_inspection": result["needs_inspection"],
         "verdicts": verdicts,
         "reportCount": len(members),
         "reportIds": [r["reportId"] for r in members],
@@ -150,6 +151,7 @@ def predicted_spots(hotspots: list[dict], real_spots: list[dict], now: float) ->
         out.append({
             "spotId": f"pred-{h['hotspotId']}", "lat": h["lat"], "lon": h["lon"], "place": h.get("name"),
             "depth_low": lo, "depth_high": hi, "confidence": "low", "hazards": [], "danger": False,
+            "needs_inspection": True,
             "verdicts": {v: x["verdict"] for v, x in r["verdicts"].items()},
             "reportCount": 0, "reportIds": [], "sources": ["predicted"], "predicted": True,
             "rainPast3h": h.get("rainPast3h"), "rainNow": h.get("rainNow"), "source_url": h.get("source_url"),

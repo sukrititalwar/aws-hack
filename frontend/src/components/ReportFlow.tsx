@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, mapStyle, WHATSAPP_JOIN, WHATSAPP_NUMBER } from "../api";
 import { t, type Lang } from "../i18n";
 import type { LonLat, Report, Vehicle } from "../types";
-import { deviceId, getPosition, photoTime, resizeImage, sleep } from "../util";
+import { deviceId, frameFromVideo, getPosition, photoTime, resizeImage, sleep } from "../util";
 import ResultCard from "./ResultCard";
 
 const PROGRESS = {
@@ -56,8 +56,15 @@ export default function ReportFlow(p: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
-  function onFile(f: File | undefined) {
+  async function onFile(f: File | undefined) {
     if (!f) return;
+    try {
+      // A phone video is reduced to one still frame and goes through the same photo pipeline.
+      if (f.type.startsWith("video/")) f = await frameFromVideo(f);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      return setStep("error");
+    }
     setFile(f);
     setPreview(URL.createObjectURL(f));
     setStep("confirm");
@@ -108,9 +115,9 @@ export default function ReportFlow(p: Props) {
       {step === "pick" && (
         <div className="pick">
           <label className="camera">
-            <input type="file" accept="image/*" capture="environment" onChange={(e) => onFile(e.target.files?.[0])} />
+            <input type="file" accept="image/*,video/*" capture="environment" onChange={(e) => onFile(e.target.files?.[0])} />
             <span className="camera-icon" aria-hidden>📷</span>
-            <span>{t("takePhoto", L)}</span>
+            <span>{t("photoOrVideo", L)}</span>
           </label>
           <p className="muted">{t("photoTip", L)}</p>
           {WHATSAPP_NUMBER && (

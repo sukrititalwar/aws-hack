@@ -27,10 +27,12 @@ from urllib.parse import parse_qs, urlparse
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.join(ROOT, "backend"))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
-from common import bus, config, depth, pipeline, routing, social, spots  # noqa: E402
+from common import bus, config, depth, drains, pipeline, routing, social, spots  # noqa: E402
 from functions.risk_scheduler.app import fetch_rain, risk_of  # noqa: E402
 
 REPORTS: dict[str, dict] = {}
+DRAINS: dict[str, dict] = {}          # DrainReady, in memory; dispatcher access code is "demo"
+DRAIN_AFTER_CLEAR = {"on": True}
 PHOTOS: dict[str, bytes] = {}
 HOTSPOTS: dict[str, list] = {}
 WEATHER: dict[str, dict] = {}
@@ -144,6 +146,25 @@ def seed_synthetic(city, n=12):
                         "source_label": "synthetic", "votes": {}, **pipeline.fields_from_assessment(a)}
 
 
+def seed_drains():
+    """A few labelled demo blockages so the priority list is not empty."""
+    now = int(time.time())
+    for i, (city, name, lat, lon, sev, hrs, rain) in enumerate([
+            ("delhi", "Minto Bridge underpass", 28.6364, 77.2224, "blocked", 5, 28.0),
+            ("delhi", "Demo drain, ITO", 28.6282, 77.2410, "partial", 20, 28.0),
+            ("gurugram", "Demo drain, Hero Honda Chowk", 28.4360, 77.0102, "blocked", 3, 0.0),
+            ("kochi", "Demo drain, MG Road", 9.9816, 76.2830, "partial", 9, 19.0)]):
+        rid = f"demo-drain-{i}"
+        DRAINS[rid] = {"reportId": rid, "city": city, "lat": lat, "lon": lon, "ts": now - hrs * 3600, "status": "open",
+                       "severity": sev, "blockage_type": "garbage", "rainNext24h": rain, "deviceHash": rid, "note": "DEMO DATA",
+                       "reasoning": "DEMO DATA: grating covered by plastic and silt.", "reasoning_hi": "डेमो: जाली प्लास्टिक से ढकी है।",
+                       "confidence": "medium"}
+
+
+def drain_hotspots(city):
+    return HOTSPOTS.get(city, [])
+
+
 def city_spots(city, mode, now, predicted=True):
     with LOCK:
         rs = [r for r in REPORTS.values() if r["city"] == city and r["mode"] == mode and r.get("status") == "live"]
@@ -164,7 +185,7 @@ class H(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "content-type")
+        self.send_header("Access-Control-Allow-Headers", "content-type,x-admin-token")
         self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
         self.end_headers()
         self.wfile.write(data)
@@ -192,6 +213,26 @@ class H(BaseHTTPRequestHandler):
             rs = sorted((r for r in REPORTS.values() if r["mode"] == "demo" and r["city"] == city), key=lambda r: r["ts"])
             return self._send(200, {"start": rs[0]["ts"] if rs else None, "end": rs[-1]["ts"] if rs else None,
                                     "reports": [public(r) for r in rs]})
+        if u.path == "/drains":
+            rows = drains.build_groups([r for r in DRAINS.values() if r["city"] == city], drain_hotspots(city))
+            if q.get("status") != "all":
+                rows = [r for r in rows if r["status"] != "cleared"]
+            return self._send(200, {"drains": rows, "now": int(time.time())})
+        if u.path == "/drains/metrics":
+            return self._send(200, drains.metrics([r for r in DRAINS.values() if r["city"] == city], time.time()))
+        m = re.fullmatch(r"/drains/([\w-]+)", u.path)
+        if m and m.group(1) in DRAINS:
+            head = DRAINS[m.group(1)]
+            ms = [r for r in DRAINS.values() if (r.get("groupId") or r["reportId"]) == (head.get("groupId") or head["reportId"])]
+            rows = drains.build_groups(ms, drain_hotspots(head["city"]))
+            out = {"status": head["status"], "rejection_reason": head.get("rejection_reason"), **(rows[0] if rows else {}),
+                   "reasoning": head.get("reasoning"), "reasoning_hi": head.get("reasoning_hi"),
+                   "afterNote": head.get("afterNote"), "clearanceVerified": head.get("clearanceVerified", False)}
+            if head["reportId"] in PHOTOS:
+                out["photoUrl"] = f"http://localhost:{ARGS.port}/photo/{head['reportId']}"
+            if head["reportId"] + "-after" in PHOTOS:
+                out["afterUrl"] = f"http://localhost:{ARGS.port}/photo/{head['reportId']}-after"
+            return self._send(200, out)
         m = re.fullmatch(r"/reports/([\w-]+)", u.path)
         if m and m.group(1) in REPORTS:
             return self._send(200, public(REPORTS[m.group(1)]))
@@ -203,6 +244,44 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         u = urlparse(self.path)
         raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        if u.path == "/drains/upload-url":
+            b = json.loads(raw)
+            rid = uuid.uuid4().hex[:16]
+            DRAINS[rid] = {"reportId": rid, "city": b.get("city", "delhi"), "lat": b["lat"], "lon": b["lon"], "ts": int(time.time()),
+                           "status": "analysing", "note": b.get("note"), "deviceHash": b["deviceId"][:16]}
+            return self._send(200, {"reportId": rid, "uploadUrl": f"http://localhost:{ARGS.port}/upload-drain/{rid}", "fields": {}})
+        m = re.fullmatch(r"/upload-drain/([\w-]+)", u.path)
+        if m:
+            rid = m.group(1)
+            s_, e_ = raw.find(b"\xff\xd8"), raw.rfind(b"\xff\xd9")
+            PHOTOS[rid] = raw[s_:e_ + 2]
+            r = DRAINS[rid]
+            time.sleep(1.2)
+            r.update({"status": "open", "severity": "blocked", "blockage_type": "garbage", "confidence": "medium", "standing_water": True,
+                      "reasoning": "LOCAL MOCK: grating covered by plastic bags and silt, so water cannot enter.",
+                      "reasoning_hi": "लोकल मॉक: जाली प्लास्टिक और गाद से ढकी है।", "rainNext24h": 22.0})
+            r["groupId"] = drains.find_group(r, list(DRAINS.values())) or rid
+            return self._send(204, b"")
+        m = re.fullmatch(r"/drains/([\w-]+)/(assign|after-url)", u.path)
+        if m:
+            if self.headers.get("x-admin-token") != "demo":
+                return self._send(403, {"error": "Dispatcher access only. (local access code: demo)"})
+            gid, action = m.groups()
+            members = [r for r in DRAINS.values() if (r.get("groupId") or r["reportId"]) == gid]
+            if action == "assign":
+                for r in members:
+                    r.update({"status": "assigned", "assignedTo": json.loads(raw)["worker"], "assignedAt": int(time.time())})
+                return self._send(200, {"ok": True})
+            return self._send(200, {"uploadUrl": f"http://localhost:{ARGS.port}/upload-after/{gid}", "fields": {}})
+        m = re.fullmatch(r"/upload-after/([\w-]+)", u.path)
+        if m:
+            gid = m.group(1)
+            s_, e_ = raw.find(b"\xff\xd8"), raw.rfind(b"\xff\xd9")
+            PHOTOS[gid + "-after"] = raw[s_:e_ + 2]
+            for r in DRAINS.values():
+                if (r.get("groupId") or r["reportId"]) == gid:
+                    r.update({"status": "cleared", "clearedAt": int(time.time()), "clearanceVerified": True})
+            return self._send(204, b"")
         if u.path == "/reports/upload-url":
             b = json.loads(raw)
             rid = uuid.uuid4().hex[:16]
@@ -222,7 +301,12 @@ class H(BaseHTTPRequestHandler):
                 fields, _ = pipeline.assess(img, r["city"], r.get("place"))
             else:
                 time.sleep(1.5)
-                fields = pipeline.fields_from_assessment(depth.normalise(MOCK))
+                m = dict(MOCK)
+                if ARGS.unsure:  # an unclear photo: no reference object, low confidence
+                    m.update({"confidence": "low", "reference_objects": [], "depth_cm_low": 0, "depth_cm_high": 12,
+                              "reasoning": "LOCAL MOCK: I cannot see a kerb, tyre or person, so the depth is a guess.",
+                              "hazards": []})
+                fields = pipeline.fields_from_assessment(depth.normalise(m))
             r.update(fields)
             return self._send(204, b"")
         m = re.fullmatch(r"/reports/([\w-]+)/vote", u.path)
@@ -257,11 +341,13 @@ def main():
     ap.add_argument("--port", type=int, default=8787)
     ap.add_argument("--bedrock", action="store_true", help="use real Bedrock for uploaded photos")
     ap.add_argument("--social", action="store_true", help="poll live social/news feeds every 10 min")
+    ap.add_argument("--unsure", action="store_true", help="mock photo analysis returns an unclear, low-confidence result")
     ap.add_argument("--storm", action="store_true", help="simulate heavy rain at every hotspot")
     ARGS = ap.parse_args()
     for c in config.CITIES:
         HOTSPOTS[c] = load_hotspots(c)
         seed_synthetic(c)
+    seed_drains()
     threading.Thread(target=background, daemon=True).start()
     print(f"Local API on http://localhost:{ARGS.port}  ({len(REPORTS)} synthetic demo reports, live rain"
           f"{', live social' if ARGS.social else ''}{', SIMULATED STORM' if ARGS.storm else ''})")

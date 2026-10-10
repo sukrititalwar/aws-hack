@@ -11,7 +11,7 @@ PUBLIC_FIELDS = [
     "createdAt", "ts", "depth_low", "depth_high", "confidence", "image_quality",
     "flowing_water", "hazards", "danger", "reasoning", "reasoning_hi", "reference_objects",
     "location_type", "verdicts", "votes", "source_type", "source_url", "source_label",
-    "demoReplayTime", "source_platform", "closure", "locatedBy",
+    "demoReplayTime", "source_platform", "closure", "locatedBy", "needs_inspection", "inspection_reasons",
 ]
 
 
