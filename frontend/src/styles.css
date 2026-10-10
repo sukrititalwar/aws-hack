@@ -28,8 +28,34 @@
   --radius: 14px;
   color-scheme: light;
 }
+/* Dark tokens: an explicit choice (data-theme) wins; otherwise follow the device. */
+:root[data-theme="dark"] {
+  --bg: #0b1220;
+  --surface: #111a2e;
+  --surface-2: #1a2540;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --border: #23304a;
+  --border-strong: #334566;
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --primary-soft: #172554;
+  --go: #4ade80;
+  --go-bg: #0f2a1c;
+  --go-fill: #16a34a;
+  --risky: #fbbf24;
+  --risky-bg: #2d2108;
+  --risky-fill: #d97706;
+  --nogo: #f87171;
+  --nogo-bg: #3a1414;
+  --nogo-fill: #dc2626;
+  --ring: #a78bfa;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
+}
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0b1220;
     --surface: #111a2e;
     --surface-2: #1a2540;
@@ -116,6 +142,7 @@ svg { flex: none; }
 }
 .chip.active { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); }
 .chip.lang { min-width: 40px; justify-content: center; }
+.chip.icon-chip { width: 36px; padding: 0; justify-content: center; }
 .chip.warn { background: var(--risky-bg); color: var(--risky); border-color: transparent; min-height: 0; }
 
 .rainpill {
@@ -157,7 +184,15 @@ button.banner { cursor: pointer; }
 
 @media (max-width: 899px) { .brand-name { display: none; } }
 @media (max-width: 560px) { .rp-extra, .rp-age { display: none; } }
-@media (max-width: 420px) { .seg-label, .live-label, .brand { display: none; } .citysel { max-width: 110px; } .toolbar { gap: 6px; padding-left: 6px; } }
+@media (max-width: 420px) {
+  .seg-label, .live-label, .brand { display: none; }
+  .citysel { max-width: 96px; padding: 4px 4px 4px 6px; }
+  .toolbar { gap: 4px; padding: 5px; }
+  .rainpill { padding: 3px 7px; gap: 4px; font-size: 0.75rem; }
+  .seg button { padding: 5px 6px; }
+  .chip.icon-chip, .chip.lang { width: 32px; min-width: 32px; padding: 0; }
+}
+@media (max-width: 380px) { .rainpill svg { display: none; } }
 
 /* ---------- legend ---------- */
 .legend-ctl { position: absolute; z-index: 4; left: 12px; bottom: calc(env(safe-area-inset-bottom) + 84px); }
@@ -356,6 +391,7 @@ button.banner { cursor: pointer; }
 .pill { font-size: 0.78rem; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: var(--primary-soft); color: var(--primary); }
 .sum-note { margin: 10px 0 0; font-size: 0.9rem; }
 .fresh { margin: 8px 0 0; font-size: 0.78rem; color: var(--muted); }
+.areas { margin: 8px 0 0; padding-left: 18px; font-size: 0.9rem; font-weight: 500; display: flex; flex-direction: column; gap: 4px; }
 .rsec { border-top: 1px solid var(--border); padding-top: 12px; }
 .sec-title { margin: 0 0 8px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .legs { display: flex; flex-direction: column; gap: 8px; font-size: 0.9rem; }
