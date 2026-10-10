@@ -3,7 +3,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 import { mapStyle } from "../api";
 import { VERDICT_UI, vehicleInfo, type Lang } from "../i18n";
-import type { Hotspot, LonLat, RouteResult, Spot, Vehicle } from "../types";
+import type { CoverageArea, Hotspot, LonLat, RouteResult, Spot, Vehicle } from "../types";
 
 interface Props {
   center: LonLat;
@@ -16,6 +16,8 @@ interface Props {
   from?: LonLat | null;
   to?: LonLat | null;
   picking: boolean;
+  dark: boolean;
+  coverage?: CoverageArea[] | null;
   onSpot: (s: Spot) => void;
   onHotspot: (h: Hotspot) => void;
   onPick: (p: LonLat) => void;
@@ -38,7 +40,6 @@ const BADGE = {
   official: svg('<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>', 11),
   social: svg('<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>', 11),
 };
-const dark = () => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
 
 export default function MapView(p: Props) {
   const el = useRef<HTMLDivElement>(null);
@@ -53,15 +54,21 @@ export default function MapView(p: Props) {
   useEffect(() => {
     const m = new maplibregl.Map({
       container: el.current!,
-      style: mapStyle(dark()),
+      style: mapStyle(p.dark),
       center: p.center,
       zoom: 13.5,
       attributionControl: { compact: true },
     });
-    if (typeof mapStyle(false) !== "string" && dark()) el.current!.classList.add("osm-dark");
+
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
     m.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), "bottom-right");
-    m.on("load", () => {
+    // Runs on the first load and again after every theme switch (setStyle drops our layers).
+    m.on("style.load", () => {
+      if (m.getSource("route-normal")) return;
+      m.addSource("coverage", { type: "geojson", data: EMPTY });
+      m.addLayer({ id: "coverage-fill", type: "fill", source: "coverage", paint: { "fill-color": "#2563eb", "fill-opacity": 0.07 } });
+      m.addLayer({ id: "coverage-line", type: "line", source: "coverage",
+        paint: { "line-color": "#2563eb", "line-width": 2, "line-dasharray": [2, 2] } });
       m.addSource("route-normal", { type: "geojson", data: EMPTY });
       m.addSource("route-safe", { type: "geojson", data: EMPTY });
       m.addSource("route-alt", { type: "geojson", data: EMPTY });
@@ -74,10 +81,11 @@ export default function MapView(p: Props) {
         paint: { "line-color": "#2563eb", "line-width": 6 }, layout: { "line-cap": "round", "line-join": "round" } });
       m.addLayer({ id: "route-alt", type: "line", source: "route-alt",
         paint: { "line-color": "#16a34a", "line-width": 5, "line-dasharray": [2, 1] }, layout: { "line-cap": "round" } });
-      cb.current.onReady?.(m);
-      drawRoute();
+      drawRoute(false);
       drawAlt();
+      drawCoverage(false);
     });
+    m.once("load", () => cb.current.onReady?.(m));
     m.on("click", (e) => {
       if (cb.current.picking) cb.current.onPick([e.lngLat.lng, e.lngLat.lat]);
     });
@@ -146,7 +154,7 @@ export default function MapView(p: Props) {
   }, [p.from, p.to]);
 
   // ---- routes ----
-  function drawRoute() {
+  function drawRoute(fit = true) {
     const m = map.current;
     if (!m || !m.getSource("route-safe")) return;
     const r = cb.current.route;
@@ -156,7 +164,7 @@ export default function MapView(p: Props) {
     (m.getSource("route-normal") as maplibregl.GeoJSONSource).setData(feat(sameAsNormal ? null : r?.normal?.geometry));
     (m.getSource("route-safe") as maplibregl.GeoJSONSource).setData(feat(r?.safe?.geometry));
     const g = r?.safe?.geometry ?? r?.normal?.geometry;
-    if (g && g.coordinates.length > 1) {
+    if (fit && g && g.coordinates.length > 1) {
       const b = new maplibregl.LngLatBounds();
       g.coordinates.forEach((c) => b.extend(c as LonLat));
       r?.normal?.geometry.coordinates.forEach((c) => b.extend(c as LonLat));
@@ -165,7 +173,7 @@ export default function MapView(p: Props) {
       m.fitBounds(b, { padding: { top: 130, bottom: wide ? 40 : Math.round(window.innerHeight * 0.6) + 20, left: 40, right: wide ? 440 : 40 }, duration: 700 });
     }
   }
-  useEffect(drawRoute, [p.route]);
+  useEffect(() => drawRoute(), [p.route]);
 
   function drawAlt() {
     const m = map.current;
@@ -174,6 +182,33 @@ export default function MapView(p: Props) {
     src?.setData(g ? { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: g }] } : EMPTY);
   }
   useEffect(drawAlt, [p.altRoute]);
+
+  // ---- areas we have road data for (shown when a trip falls outside them) ----
+  function drawCoverage(fit = true) {
+    const m = map.current;
+    const src = m?.getSource("coverage") as maplibregl.GeoJSONSource | undefined;
+    if (!m || !src) return;
+    const areas = cb.current.coverage ?? [];
+    src.setData({ type: "FeatureCollection", features: areas.map(({ name, bbox: [w, s, e, n] }) => ({
+      type: "Feature", properties: { name },
+      geometry: { type: "Polygon", coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] },
+    })) });
+    if (fit && areas.length) {
+      const b = new maplibregl.LngLatBounds();
+      areas.forEach(({ bbox: [w, s, e, n] }) => { b.extend([w, s]); b.extend([e, n]); });
+      const wide = window.innerWidth >= 760;
+      m.fitBounds(b, { padding: { top: 130, bottom: wide ? 40 : Math.round(window.innerHeight * 0.6) + 20, left: 40, right: wide ? 440 : 40 }, duration: 700 });
+    }
+  }
+  useEffect(() => drawCoverage(), [p.coverage]);
+
+  // ---- light / dark map ----
+  const firstTheme = useRef(true);
+  useEffect(() => {
+    if (typeof mapStyle(false) !== "string") el.current?.classList.toggle("osm-dark", p.dark);
+    if (firstTheme.current) { firstTheme.current = false; return; }
+    map.current?.setStyle(mapStyle(p.dark), { diff: false });
+  }, [p.dark]);
 
   // Re-centre when the city changes.
   useEffect(() => {
