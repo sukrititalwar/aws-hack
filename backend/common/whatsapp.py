@@ -10,7 +10,7 @@ Providers
 Conversation (per sender, kept 30 min in the WhatsAppSessions table)
   photo + location (either order) -> report -> analyze Lambda -> verdict reply
   location only                   -> nearby flooded spots for the sender's vehicle
-  "car" / "bus" / "scooter" ...    -> sets the vehicle;  "hindi" / "english" -> language
+  "car" / "bus" / "scooter" / "EV scooter" ... -> sets the vehicle; "hindi" / "english" -> language
   any other text                  -> matches a known flood spot name, else help
 """
 import base64
@@ -37,10 +37,12 @@ SSM_PREFIX = os.environ.get("WA_SSM_PREFIX", "/scooter-cross/whatsapp")
 VEHICLE_WORDS = {
     "walk": "pedestrian", "walking": "pedestrian", "पैदल": "pedestrian", "cycle": "bicycle", "bicycle": "bicycle",
     "scooter": "scooter", "scooty": "scooter", "bike": "scooter", "motorcycle": "scooter", "स्कूटर": "scooter",
+    "ev": "ev_scooter", "ईवी": "ev_scooter",
     "auto": "auto", "rickshaw": "auto", "ऑटो": "auto", "car": "car", "कार": "car", "suv": "suv",
     "bus": "bus", "बस": "bus", "truck": "bus", "ambulance": "ambulance",
 }
-ICON = {"pedestrian": "🚶", "bicycle": "🚲", "scooter": "🛵", "auto": "🛺", "car": "🚗", "suv": "🚙", "bus": "🚌", "ambulance": "🚑"}
+EV_SCOOTER_PHRASES = {"e-scooter", "ev scooter", "electric scooter", "ई-स्कूटर", "ई स्कूटर", "ईवी स्कूटर", "इलेक्ट्रिक स्कूटर"}
+ICON = {"pedestrian": "🚶", "bicycle": "🚲", "scooter": "🛵", "ev_scooter": "🛵", "auto": "🛺", "car": "🚗", "suv": "🚙", "bus": "🚌", "ambulance": "🚑"}
 GLYPH = {"GO": "✅", "RISKY": "⚠️", "NO_GO": "⛔"}
 
 HELP = {
@@ -50,14 +52,14 @@ HELP = {
            "I'll reply with the water depth and whether your vehicle can cross.\n\n"
            "• Send just a location to see flooded spots near you\n"
            "• Send a place name (e.g. *Minto Bridge*) for its status\n"
-           "• Your vehicle: reply *scooter*, *car*, *bus*, *auto*, *walk*…  • *हिंदी* for Hindi"),
+           "• Your vehicle: reply *scooter*, *EV scooter*, *car*, *bus*, *auto*, *walk*…  • *हिंदी* for Hindi"),
     "hi": ("🌊 *क्या मेरा स्कूटर पार कर सकता है?*\n"
            "1️⃣ पानी भरी सड़क की *फ़ोटो* भेजें\n"
            "2️⃣ अपनी *लोकेशन* भेजें (📎 → Location)\n"
            "मैं पानी की गहराई और आपकी गाड़ी के लिए फ़ैसला बताऊँगा।\n\n"
            "• सिर्फ़ लोकेशन भेजें: आस-पास पानी भरी जगहें\n"
            "• जगह का नाम भेजें (जैसे *मिंटो ब्रिज*)\n"
-           "• गाड़ी: *scooter*, *car*, *bus*, *auto*… • *English* के लिए English लिखें"),
+           "• गाड़ी: *scooter*, *ईवी स्कूटर*, *car*, *bus*, *auto*… • *English* के लिए English लिखें"),
 }
 
 
@@ -126,12 +128,18 @@ def handle(phone: str, msg: dict, channel: dict) -> str | None:
         save_session(phone, s)
         return HELP["en"]
     words = re.findall(r"[\wऀ-ॿ]+", low)
-    veh = next((VEHICLE_WORDS[w] for w in words if w in VEHICLE_WORDS), None)
+    ev_phrase = " ".join(words[:2])
+    veh = "ev_scooter" if low in EV_SCOOTER_PHRASES or ev_phrase in EV_SCOOTER_PHRASES else next(
+        (VEHICLE_WORDS[w] for w in words if w in VEHICLE_WORDS), None)
     if veh and len(words) <= 3:
         s["vehicle"] = veh
         save_session(phone, s)
-        return (f"{ICON[veh]} OK, verdicts for *{veh}*. Send a photo + location, or just a location."
-                if lang == "en" else f"{ICON[veh]} ठीक है, अब *{veh}* के लिए बताऊँगा।")
+        if veh == "ev_scooter":
+            label = "EV Scooter" if lang == "en" else "ई-स्कूटर"
+        else:
+            label = veh
+        return (f"{ICON[veh]} OK, verdicts for *{label}*. Send a photo + location, or just a location."
+                if lang == "en" else f"{ICON[veh]} ठीक है, अब *{label}* के लिए बताऊँगा।")
     if low in ("", "hi", "hello", "help", "start", "menu", "join", "नमस्ते") or low.startswith("join "):
         return HELP[lang]
     return place_status_text(text, s.get("vehicle", "scooter"), lang) or HELP[lang]

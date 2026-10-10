@@ -11,6 +11,7 @@ VEHICLE_LABELS = {
     "pedestrian": ("Walking", "पैदल"),
     "bicycle": ("Bicycle", "साइकिल"),
     "scooter": ("Scooter / bike", "स्कूटर / बाइक"),
+    "ev_scooter": ("EV Scooter", "ई-स्कूटर"),
     "auto": ("Auto / e-rickshaw", "ऑटो / ई-रिक्शा"),
     "car": ("Car", "कार"),
     "suv": ("SUV", "एसयूवी"),
@@ -32,6 +33,8 @@ RISK_REASON = {
                 "संतुलन बिगड़ सकता है और गड्ढे नहीं दिखते"),
     "scooter": ("water can enter the exhaust and stall the engine",
                 "पानी साइलेंसर में जाकर इंजन बंद कर सकता है"),
+    "ev_scooter": ("estimated depth and water resistance vary by model; this app's threshold is a precaution, not a damage prediction or safety guarantee",
+                   "अनुमानित गहराई और पानी से बचाव मॉडल के अनुसार अलग हो सकते हैं; ऐप की सीमा एहतियात है, नुकसान का अनुमान या सुरक्षा की गारंटी नहीं"),
     "auto": ("water can reach the engine and floor",
              "पानी इंजन और फ़र्श तक पहुँच सकता है"),
     "car": ("water can enter the air intake and the car can float",
@@ -101,8 +104,10 @@ CATEGORY_LABELS = {
 }
 
 
-def category_of(verdict: str, needs_inspection: bool) -> str:
+def category_of(verdict: str, needs_inspection: bool, vehicle: str | None = None) -> str:
     if verdict == "GO":
+        if vehicle == "ev_scooter" and not needs_inspection:
+            return "potentially_unsafe"
         return "requires_inspection" if needs_inspection else "passable"
     return "potentially_unsafe" if verdict == "RISKY" else "unsafe"
 
@@ -131,18 +136,26 @@ def verdicts_for(assessment: dict) -> dict:
             why = "Electric wire or pole in the water. Danger of electrocution. Stay away."
             why_hi = "पानी में बिजली का तार या खंभा है। करंट का ख़तरा। दूर रहें।"
         elif verdict == "GO":
-            why = f"Water about {d} cm. Usually OK for this vehicle, go slowly."
-            why_hi = f"पानी लगभग {d} सेमी। आमतौर पर ठीक है, धीरे चलें।"
+            if v == "ev_scooter":
+                why = ("Estimated depth is below this app's EV Scooter caution threshold; "
+                       "this is not a safety guarantee. Avoid crossing if unsure.")
+                why_hi = ("अनुमानित गहराई इस ऐप की ई-स्कूटर सावधानी सीमा से कम है; "
+                          "इससे सुरक्षा की गारंटी नहीं मिलती। शक हो तो पार न करें।")
+            else:
+                why = f"Water about {d} cm. Usually OK for this vehicle, go slowly."
+                why_hi = f"पानी लगभग {d} सेमी। आमतौर पर ठीक है, धीरे चलें।"
         else:
             r_en, r_hi = RISK_REASON[v]
             why = f"Water about {d} cm: {r_en}."
             why_hi = f"पानी लगभग {d} सेमी: {r_hi}।"
             if reasons:
                 why += " Also: " + ", ".join(reasons) + "."
+        if v == "ev_scooter" and verdict == "GO":
+            lab_en, lab_hi = "Below app caution threshold", "ऐप की सावधानी सीमा से कम"
         out[v] = {
             "vehicle": v,
             "verdict": verdict,
-            "category": category_of(verdict, bool(inspect)),
+            "category": category_of(verdict, bool(inspect), v),
             "label_en": f"{name_en}: {lab_en}",
             "label_hi": f"{name_hi}: {lab_hi}",
             "why": why,

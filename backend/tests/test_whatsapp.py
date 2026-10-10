@@ -93,6 +93,26 @@ def test_location_only_lists_nearby_and_place_name_status(wa_env):
     assert "Send a *photo*" in r["body"]
 
 
+def test_ev_scooter_keywords_are_separate_and_localized(wa_env):
+    from common import whatsapp as wa
+    from functions.whatsapp import app as wh
+    me = "whatsapp:+919800000004"
+
+    r = wh.handler(twilio_event({"From": me, "Body": "EV Scooter"}), None)
+    assert "EV Scooter" in r["body"]
+    assert wa.get_session(me)["vehicle"] == "ev_scooter"
+
+    wh.handler(twilio_event({"From": me, "Body": "हिंदी"}), None)
+    r = wh.handler(twilio_event({"From": me, "Body": "ई-स्कूटर"}), None)
+    assert "ई-स्कूटर" in r["body"]
+    assert wa.get_session(me)["vehicle"] == "ev_scooter"
+
+    wh.handler(twilio_event({"From": me, "Body": "scooter"}), None)
+    assert wa.get_session(me)["vehicle"] == "scooter"
+    wh.handler(twilio_event({"From": me, "Body": "electric wire"}), None)
+    assert wa.get_session(me)["vehicle"] == "scooter"
+
+
 def test_aws_end_user_messaging_text(wa_env):
     from functions.whatsapp import app as wh
     entry = {"id": "1", "changes": [{"field": "messages", "value": {"messages": [

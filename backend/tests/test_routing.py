@@ -50,6 +50,16 @@ def test_no_go_spot_forces_detour_through_gali():
     assert r["safe"]["geometry"]["coordinates"][-1] == NODES[2]
 
 
+def test_ev_scooter_route_uses_its_own_spot_verdict():
+    s = spot("underpass", 72.85 + D / 2, 19.101, "GO")
+    s["verdicts"]["ev_scooter"] = "NO_GO"
+    ev = routing.plan(graph(), NODES[0], NODES[2], "ev_scooter", [s])
+    petrol = routing.plan(graph(), NODES[0], NODES[2], "scooter", [s])
+    assert ev["safe"]["distance_m"] == 432
+    assert ev["avoided_spots"][0]["spotId"] == "underpass"
+    assert petrol["safe"]["distance_m"] == 210
+
+
 def test_risky_spot_penalised_not_blocked():
     s = spot("dip", 72.85 + D / 2, 19.101, "RISKY")
     r = routing.plan(graph(), NODES[0], NODES[2], "scooter", [s])

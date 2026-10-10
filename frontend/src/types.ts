@@ -1,4 +1,4 @@
-export type Vehicle = "pedestrian" | "bicycle" | "scooter" | "auto" | "car" | "suv" | "bus" | "ambulance";
+export type Vehicle = "pedestrian" | "bicycle" | "scooter" | "ev_scooter" | "auto" | "car" | "suv" | "bus" | "ambulance";
 export type Verdict = "GO" | "RISKY" | "NO_GO";
 export type LonLat = [number, number];
 export type Mode = "live" | "demo";
