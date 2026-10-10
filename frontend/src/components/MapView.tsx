@@ -78,7 +78,9 @@ export default function MapView(p: Props) {
     spotMarkers.current.forEach((x) => x.remove());
     spotMarkers.current = p.spots.map((s) => {
       const v = s.verdicts[p.vehicle];
-      const ui = VERDICT_UI[v];
+      // A GO we are not sure about is drawn as "?" (requires inspection), never as a green tick.
+      const unsure = v === "GO" && !!s.needs_inspection;
+      const ui = unsure ? { cls: "risky", glyph: "?", en: "Requires inspection", hi: "" } : VERDICT_UI[v];
       const size = Math.min(30 + (s.reportCount - 1) * 6, 54);
       const btn = document.createElement("button");
       btn.className = `pin ${ui.cls}${s.faded ? " faded" : ""}${s.danger ? " danger" : ""}${s.predicted ? " predicted" : ""}`;

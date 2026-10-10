@@ -80,7 +80,30 @@ const STR = {
   legend: { en: "for your vehicle", hi: "आपकी सवारी के लिए" },
   synthetic: { en: "Synthetic test point", hi: "परीक्षण बिंदु" },
   source: { en: "Source", hi: "स्रोत" },
+  inspect: { en: "Requires inspection", hi: "जाँच ज़रूरी" },
+  inspectWhy: {
+    en: "A photo can't measure depth reliably (angle, reflections, unknown road shape). Treat this as unsafe until someone checks it.",
+    hi: "फ़ोटो से गहराई सही नहीं मापी जा सकती (कोण, परछाईं, सड़क का आकार)। जाँच होने तक असुरक्षित मानें।",
+  },
+  roughDepth: { en: "Rough depth", hi: "मोटा अंदाज़ा" },
+  drains: { en: "Blocked drains", hi: "बंद नाले" },
+  photoOrVideo: { en: "Take a photo or short video", hi: "फ़ोटो या छोटा वीडियो लें" },
 } as const;
+
+/** Verdict + "are we sure?" -> the user-facing category. A GO we are unsure about is never "passable". */
+export function categoryUI(verdict: Verdict, inspect: boolean): { cls: string; glyph: string; en: string; hi: string } {
+  if (verdict === "GO" && inspect) return { cls: "risky", glyph: "?", en: "Requires inspection", hi: "जाँच ज़रूरी" };
+  if (verdict === "GO") return { cls: "go", glyph: "✓", en: "Passable", hi: "पार कर सकते हैं" };
+  if (verdict === "RISKY") return { cls: "risky", glyph: "!", en: "Potentially unsafe", hi: "जोखिम भरा" };
+  return { cls: "nogo", glyph: "✕", en: "Unsafe", hi: "असुरक्षित" };
+}
+
+/** Never show false precision: round the range outwards to 5 cm. */
+export function depthBand(lo?: number, hi?: number): string {
+  if (lo == null || hi == null) return "";
+  const a = Math.floor(lo / 5) * 5, b = Math.ceil(hi / 5) * 5;
+  return a === b ? `~${a}` : `${a}–${b}`;
+}
 
 export type Key = keyof typeof STR;
 export const t = (k: Key, lang: Lang) => STR[k][lang];

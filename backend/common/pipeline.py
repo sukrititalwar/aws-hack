@@ -29,4 +29,6 @@ def fields_from_assessment(a: dict) -> dict:
         "location_type": a["location_type"],
         "verdicts": r["verdicts"],
         "danger": r["danger"],
+        "needs_inspection": r["needs_inspection"],
+        "inspection_reasons": r["inspection_reasons"],
     }

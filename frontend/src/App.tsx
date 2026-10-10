@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, API, CITIES, setCity as setApiCity, WHATSAPP_JOIN, WHATSAPP_NUMBER } from "./api";
 import BusSheet from "./components/BusSheet";
+import DrainSheet from "./components/DrainSheet";
 import DemoBar from "./components/DemoBar";
 import MapView from "./components/MapView";
 import ReportFlow from "./components/ReportFlow";
@@ -10,7 +11,7 @@ import { t, VEHICLES, VERDICT_UI, type Lang } from "./i18n";
 import type { CompareRow, Hotspot, LonLat, Mode, Report, RouteResult, Spot, Vehicle, Weather } from "./types";
 import { getPosition, store, stored } from "./util";
 
-type Panel = { kind: "none" } | { kind: "report" } | { kind: "route" } | { kind: "spot"; spot: Spot } | { kind: "hotspot"; h: Hotspot } | { kind: "bus" };
+type Panel = { kind: "none" } | { kind: "report" } | { kind: "route" } | { kind: "spot"; spot: Spot } | { kind: "hotspot"; h: Hotspot } | { kind: "bus" } | { kind: "drains" };
 
 // WhatsApp replies link here as ?city=..&lat=..&lon=..
 const URLQ = new URLSearchParams(location.search);
@@ -193,6 +194,7 @@ export default function App() {
           {mode === "live" && <button className="fab primary" onClick={() => setPanel({ kind: "report" })}>📷 {t("report", lang)}</button>}
           <button className="fab" onClick={() => openRoute()}>🧭 {t("safeRoute", lang)}</button>
           {vehicle === "bus" && <button className="fab" onClick={() => setPanel({ kind: "bus" })} aria-label="Bus routes affected">🚌</button>}
+          {mode === "live" && <button className="fab" style={{ flex: "0 0 auto" }} onClick={() => setPanel({ kind: "drains" })} aria-label="Blocked drains">🕳️</button>}
           {mode === "live" && WHATSAPP_NUMBER && (
             <a className="fab wa" style={{ flex: "0 0 auto", textDecoration: "none", display: "grid", placeItems: "center" }}
               href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(WHATSAPP_JOIN || "hi")}`} target="_blank" rel="noreferrer"
@@ -219,6 +221,7 @@ export default function App() {
           alt={alt.v} setAlt={(v, g) => setAltState({ v, g })}
           onClose={() => { setPanel({ kind: "none" }); setRoute(null); setPicking(null); setAltState({ v: null, g: null }); }} />
       )}
+      {panel.kind === "drains" && <DrainSheet lang={lang} center={center} onClose={() => setPanel({ kind: "none" })} />}
       {panel.kind === "bus" && <BusSheet mode={mode} at={at} lang={lang} onClose={() => setPanel({ kind: "none" })} />}
       {panel.kind === "hotspot" && (
         <div className="sheet" role="dialog" aria-label={panel.h.name}>

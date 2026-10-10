@@ -6,27 +6,7 @@ import hashlib
 import time
 import uuid
 
-from botocore.exceptions import ClientError
-
-from common import config, db, geo, http, views
-
-
-def _rate_limited(device_id: str) -> bool:
-    """Atomic per-device counter per hour bucket; TTL cleans it up."""
-    hour = int(time.time() // 3600)
-    try:
-        db.table(config.RATELIMIT_TABLE).update_item(
-            Key={"key": f"dev#{device_id}#{hour}"},
-            UpdateExpression="ADD n :one SET expiresAt = :exp",
-            ConditionExpression="attribute_not_exists(n) OR n < :lim",
-            ExpressionAttributeValues={":one": 1, ":lim": config.REPORTS_PER_DEVICE_PER_HOUR,
-                                       ":exp": (hour + 2) * 3600},
-        )
-        return False
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-            return True
-        raise
+from common import config, db, geo, http, ratelimit, views
 
 
 def handler(event, _ctx):
@@ -44,7 +24,7 @@ def handler(event, _ctx):
         return http.bad(f"unsupported city; use one of {sorted(config.CITIES)}")
     if len(device_id) < 8:
         return http.bad("deviceId required")
-    if _rate_limited(device_id):
+    if ratelimit.limited("dev", device_id, config.REPORTS_PER_DEVICE_PER_HOUR):
         return http.bad("Too many reports from this device. Try again in an hour.", 429)
 
     lat, lon = float(lat), float(lon)

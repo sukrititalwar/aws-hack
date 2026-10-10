@@ -247,3 +247,21 @@ a { color: var(--primary); }
 .busref { display: inline-block; min-width: 54px; text-align: center; font-weight: 900; padding: 2px 8px; border-radius: 8px; margin-right: 8px; color: #fff; }
 .busref.nogo { background: var(--nogo); } .busref.risky { background: var(--risky); } .busref.go { background: var(--go); }
 .wa { background: #25d366; border-color: #25d366; color: #06301a; }
+
+.inspect-banner { display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 12px; border: 2px dashed var(--risky); background: var(--risky-bg); color: var(--risky); font-size: 0.92rem; }
+.inspect-banner strong { font-size: 1.05rem; }
+
+/* ---------- DrainReady ---------- */
+.tabs { margin: 4px 0 10px; width: 100%; }
+.tabs button { flex: 1; }
+.drainlist { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.drainlist button { width: 100%; display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; text-align: left;
+  border: 1.5px solid var(--border); background: var(--surface); border-radius: 12px; padding: 10px; cursor: pointer; color: var(--text); }
+.drain-main { display: flex; flex-direction: column; gap: 2px; }
+.sevchip { font-size: 0.78rem; font-weight: 800; padding: 4px 8px; border-radius: 999px; white-space: nowrap; }
+.sevchip i { font-style: normal; }
+.sevchip.nogo { background: var(--nogo-bg); color: var(--nogo); } .sevchip.risky { background: var(--risky-bg); color: var(--risky); }
+.score { font-weight: 900; font-size: 1.2rem; min-width: 38px; text-align: right; }
+.metrics { display: flex; flex-direction: column; gap: 8px; }
+.metric { display: flex; gap: 12px; align-items: center; padding: 12px; border-radius: 12px; background: var(--surface-2); }
+.metric b { font-size: 2rem; min-width: 56px; text-align: center; }

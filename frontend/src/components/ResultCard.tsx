@@ -1,4 +1,4 @@
-import { HAZARD_LABEL, t, vehicleInfo, type Lang } from "../i18n";
+import { depthBand, HAZARD_LABEL, t, vehicleInfo, type Lang } from "../i18n";
 import type { Report, Vehicle, Verdict } from "../types";
 import { speak } from "../util";
 import { BigVerdict, VerdictGrid } from "./Verdicts";
@@ -20,8 +20,9 @@ export default function ResultCard({ report: r, vehicle, lang, setLang, onRoute,
   const why = lang === "hi" ? mine.why_hi : mine.why;
   const hazards = (r.hazards ?? []).filter((h) => HAZARD_LABEL[h]);
 
+  const inspect = !!r.needs_inspection;
   const shareText =
-    `🌊 ${r.place ?? "Flooded road"}: about ${r.depth_low}-${r.depth_high} cm of water. ` +
+    `🌊 ${r.place ?? "Flooded road"}: roughly ${depthBand(r.depth_low, r.depth_high)} cm of water${inspect ? " (needs inspection)" : ""}. ` +
     `${vehicleInfo(vehicle).en}: ${mine.label_en.split(": ")[1]}. ` +
     `https://www.google.com/maps?q=${r.lat},${r.lon} (via Can My Scooter Cross?)`;
 
@@ -32,9 +33,9 @@ export default function ResultCard({ report: r, vehicle, lang, setLang, onRoute,
 
       <div className="depthrow">
         <div>
-          <div className="muted small">{t("depth", lang)}</div>
+          <div className="muted small">{t("roughDepth", lang)}</div>
           <div className="depth">
-            {r.depth_low}–{r.depth_high} <small>cm</small>
+            {depthBand(r.depth_low, r.depth_high)} <small>cm</small>
           </div>
         </div>
         <div className={`conf conf-${r.confidence}`}>
@@ -44,7 +45,14 @@ export default function ResultCard({ report: r, vehicle, lang, setLang, onRoute,
 
       {r.photoUrl && <img className="photo" src={r.photoUrl} alt="Reported flooded road" loading="lazy" />}
 
-      <BigVerdict verdict={mine.verdict} vehicle={vehicle} why={why} lang={lang} />
+      {inspect && (
+        <div className="inspect-banner" role="note">
+          <strong>? {t("inspect", lang)}</strong>
+          <span>{t("inspectWhy", lang)}</span>
+          {!!r.inspection_reasons?.length && <span className="small">({r.inspection_reasons.join(", ")})</span>}
+        </div>
+      )}
+      <BigVerdict verdict={mine.verdict} vehicle={vehicle} why={why} lang={lang} inspect={inspect} />
 
       {reasoning && (
         <p className="reasoning">
@@ -62,7 +70,7 @@ export default function ResultCard({ report: r, vehicle, lang, setLang, onRoute,
         </div>
       )}
 
-      <VerdictGrid verdicts={levels} selected={vehicle} lang={lang} />
+      <VerdictGrid verdicts={levels} selected={vehicle} lang={lang} inspect={inspect} />
 
       {!!r.reference_objects?.length && (
         <details className="refs">

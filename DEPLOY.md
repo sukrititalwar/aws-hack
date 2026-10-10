@@ -39,6 +39,7 @@ sam deploy --guided
 | BedrockRegion | `ap-south-1` |
 | AllowedOrigin | `*` for now |
 | AlertEmail | team email (optional; confirm the SNS email) |
+| AdminToken | a long random string; this is the **DrainReady dispatcher access code** (keep it private) |
 | AppUrl, WhatsAppTopicArn, Reddit/X/YouTube keys | leave empty for now |
 | "...may not have authorization defined, is this okay?" | `y` (public API) |
 | Save to samconfig.toml | `Y` |
@@ -95,7 +96,10 @@ Deploy, then note the URL (`https://main.<id>.amplifyapp.com`). Every `git push`
 
 AWS-native alternative: AWS End User Messaging Social → link a WhatsApp Business account → choose an SNS topic → redeploy with `WhatsAppTopicArn=<topic>`.
 
-## 7. Troubleshooting
+## 7. DrainReady
+Reporting needs no setup. Dispatchers open **🕳️ Blocked drains**, tap a blockage, expand **Dispatcher**, paste the **AdminToken**, then assign a worker and upload the after-photo. The drain is only marked cleared if the after-photo shows a clear drain. Check the numbers on the **Impact** tab. Local test: run `scripts/local_api.py` (access code `demo`).
+
+## 8. Troubleshooting
 ```bash
 sam logs --stack-name scooter-cross -n AnalyzeFunction --tail
 ```

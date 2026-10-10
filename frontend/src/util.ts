@@ -52,6 +52,32 @@ export async function resizeImage(file: File, maxSide = 1568): Promise<Blob> {
   return new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error("encode failed"))), "image/jpeg", 0.85));
 }
 
+/** Phone video -> one JPEG frame (middle of the clip) so it goes through the same photo pipeline. */
+export async function frameFromVideo(file: File): Promise<File> {
+  const url = URL.createObjectURL(file);
+  try {
+    const v = document.createElement("video");
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = "auto";
+    v.src = url;
+    await new Promise<void>((res, rej) => {
+      v.onloadedmetadata = () => res();
+      v.onerror = () => rej(new Error("Could not read this video. Try a photo instead."));
+    });
+    v.currentTime = Math.min(Math.max(v.duration / 2, 0.1), Math.max(v.duration - 0.1, 0.1));
+    await new Promise<void>((res) => { v.onseeked = () => res(); });
+    const c = document.createElement("canvas");
+    c.width = v.videoWidth;
+    c.height = v.videoHeight;
+    c.getContext("2d")!.drawImage(v, 0, 0);
+    const blob: Blob = await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("frame failed"))), "image/jpeg", 0.9));
+    return new File([blob], "frame.jpg", { type: "image/jpeg" });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export function getPosition(timeoutMs = 8000): Promise<[number, number]> {
   return new Promise((res, rej) => {
     if (!navigator.geolocation) return rej(new Error("no geolocation"));
