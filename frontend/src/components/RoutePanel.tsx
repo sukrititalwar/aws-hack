@@ -1,6 +1,8 @@
+import { ArrowLeft, Bell, Info, LocateFixed, MapPinned, Navigation, OctagonX, Route as RouteIcon, Share2, ShieldQuestion, TriangleAlert, X } from "lucide-react";
 import { useState } from "react";
 import { api, geocode, hasLocationKey } from "../api";
 import { t, VERDICT_UI, vehicleInfo, type Lang } from "../i18n";
+import { VehicleIcon, VerdictIcon } from "../icons";
 import type { CompareRow, LonLat, Mode, RouteResult, Vehicle } from "../types";
 import { getPosition } from "../util";
 
@@ -26,18 +28,37 @@ interface Props {
 }
 
 const STATUS: Record<CompareRow["status"], { en: string; hi: string }> = {
-  usual: { en: "Usual route OK", hi: "सामान्य रास्ता ठीक" },
-  usual_with_care: { en: "Usual route, go slow", hi: "सामान्य रास्ता, धीरे" },
-  detour: { en: "Must detour", hi: "घूमकर जाएँ" },
-  stuck: { en: "No dry route", hi: "कोई सूखा रास्ता नहीं" },
+  usual: { en: "Usual route", hi: "सामान्य रास्ता" },
+  usual_with_care: { en: "Usual, go slow", hi: "सामान्य, धीरे" },
+  detour: { en: "Detour", hi: "घूमकर" },
+  stuck: { en: "No dry route", hi: "सूखा रास्ता नहीं" },
 };
+
+// Older API builds prefixed the coverage warning onto the note; strip it so coverage and safety stay separate.
+const COVERAGE_PREFIX = "One of your points is outside the routable demo area. ";
+
+type Summary = { cls: "clear" | "detour" | "bad" | "unknown"; title: { en: string; hi: string } };
+
+/** The headline for a route. "Nothing reported" is never presented as "safe". */
+function summarise(r: RouteResult): Summary {
+  if (!r.normal) return { cls: "bad", title: { en: "No route found", hi: "रास्ता नहीं मिला" } };
+  if (!r.safe) return { cls: "bad", title: { en: "No dry route found", hi: "सूखा रास्ता नहीं मिला" } };
+  const n = r.avoided_spots.length;
+  if (n > 0) return { cls: "detour", title: { en: `Avoids ${n} flooded spot${n === 1 ? "" : "s"}`, hi: `${n} पानी भरी जगहों से बचता है` } };
+  if (r.spots_considered === 0) return { cls: "unknown", title: { en: "No live reports in this area", hi: "इस इलाके से कोई लाइव रिपोर्ट नहीं" } };
+  return { cls: "clear", title: { en: "No flooding reported on this route", hi: "इस रास्ते पर पानी भराव की कोई रिपोर्ट नहीं" } };
+}
+
+const SUMMARY_ICON = { clear: Navigation, detour: RouteIcon, bad: OctagonX, unknown: ShieldQuestion } as const;
+
+const clock = (s?: number) => new Date((s ?? Date.now() / 1000) * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 /** Same trip for other vehicles: "scooter must detour, but a car/bus can take the usual road". */
 function Compare({ rows, lang, current, alt, setAlt }: { rows: CompareRow[]; lang: Lang; current: Vehicle; alt: Vehicle | null;
   setAlt: Props["setAlt"] }) {
   return (
-    <div>
-      <p className="field-label">{lang === "hi" ? "यही सफ़र, दूसरी गाड़ियाँ" : "Same trip, other vehicles"}</p>
+    <section className="rsec">
+      <h3 className="sec-title">{lang === "hi" ? "यही सफ़र, दूसरी गाड़ियाँ" : "Same trip, other vehicles"}</h3>
       <ul className="compare">
         {rows.map((r) => {
           const v = vehicleInfo(r.vehicle);
@@ -48,10 +69,9 @@ function Compare({ rows, lang, current, alt, setAlt }: { rows: CompareRow[]; lan
             <li key={r.vehicle}>
               <button className={alt === r.vehicle ? "sel" : ""} aria-pressed={alt === r.vehicle} disabled={!r.geometry}
                 onClick={() => (alt === r.vehicle ? setAlt(null, null) : setAlt(r.vehicle, r.geometry))}>
-                <span className="cicon" aria-hidden>{v.icon}</span>
-                <span>
-                  <strong>{v[lang]}{r.vehicle === current ? (lang === "hi" ? " (आप)" : " (you)") : ""}</strong>
-                  <br />
+                <span className="cicon"><VehicleIcon v={r.vehicle} size={20} /></span>
+                <span className="cmain">
+                  <span className="cname">{v[lang]}{r.vehicle === current ? (lang === "hi" ? " (आप)" : " (you)") : ""}</span>
                   <span className="small muted">{r.geometry
                     ? `${(r.safe_km ?? r.usual_km).toFixed(1)} km · ${Math.round(r.safe_min ?? r.usual_min)} min${extra}${why ? ` · ${why}` : ""}`
                     : r.note}</span>
@@ -62,8 +82,8 @@ function Compare({ rows, lang, current, alt, setAlt }: { rows: CompareRow[]; lan
           );
         })}
       </ul>
-      <p className="small muted">{lang === "hi" ? "किसी गाड़ी पर टैप करें: उसका रास्ता हरे रंग में दिखेगा।" : "Tap a vehicle to see its route in green on the map."}</p>
-    </div>
+      <p className="hint">{lang === "hi" ? "किसी गाड़ी पर टैप करें: उसका रास्ता हरी डैश लाइन में दिखेगा।" : "Tap a vehicle to show its route as a green dashed line."}</p>
+    </section>
   );
 }
 
@@ -93,12 +113,14 @@ function PlaceField({ field, value, label, p }: { field: Field; value: LonLat | 
           ))}
         </ul>
       )}
-      <div className="row gap">
+      <div className="row gap chips">
         {field === "from" && (
-          <button className="chip" onClick={() => getPosition().then(set).catch(() => alert("Location not available"))}>📍 {t("myLocation", p.lang)}</button>
+          <button className="chip" onClick={() => getPosition().then(set).catch(() => alert("Location not available"))}>
+            <LocateFixed size={16} aria-hidden /> {t("myLocation", p.lang)}
+          </button>
         )}
         <button className={`chip${p.picking === field ? " active" : ""}`} onClick={() => p.setPicking(p.picking === field ? null : field)}>
-          👆 {t("tapMap", p.lang)}
+          <MapPinned size={16} aria-hidden /> {t("tapMap", p.lang)}
         </button>
       </div>
     </div>
@@ -110,6 +132,7 @@ export default function RoutePanel(p: Props) {
   const [err, setErr] = useState("");
   const [contact, setContact] = useState("");
   const [subMsg, setSubMsg] = useState("");
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const L = p.lang;
   const veh = vehicleInfo(p.vehicle);
   const r = p.result;
@@ -143,18 +166,39 @@ export default function RoutePanel(p: Props) {
     return (
       <div className="sheet peek" role="dialog" aria-label={t("tapMap", L)}>
         <div className="row gap" style={{ justifyContent: "space-between" }}>
-          <strong>👆 {t("tapMap", L)}: <span className={`endpoint inline ${p.picking}`}>{p.picking === "from" ? "A" : "B"}</span></strong>
-          <button className="btn" onClick={() => p.setPicking(null)}>{t("cancel", L)}</button>
+          <span className="row gap"><MapPinned size={18} aria-hidden /> <strong>{t("tapMap", L)}</strong>
+            <span className={`endpoint inline ${p.picking}`}>{p.picking === "from" ? "A" : "B"}</span></span>
+          <button className="btn ghost" onClick={() => p.setPicking(null)}>{t("cancel", L)}</button>
         </div>
       </div>
     );
   }
 
+  const leg = r?.safe ?? r?.normal ?? null;
+  const sum = r ? summarise(r) : null;
+  const SumIcon = sum ? SUMMARY_ICON[sum.cls] : Navigation;
+  const outside = !!r && (r.out_of_area ?? r.note.startsWith(COVERAGE_PREFIX));
+  const note = r ? r.note.replace(COVERAGE_PREFIX, "") : "";
+  const showNormal = !!(r?.normal && r.safe && r.safe.distance_m !== r.normal.distance_m);
+
+  const shareText = r && p.from && p.to && leg
+    ? [
+        `Can My Scooter Cross? · ${veh.en} route · checked ${clock(r.checked_at)}`,
+        `${sum!.title.en}. ${(leg.distance_m / 1000).toFixed(1)} km · ${Math.round(leg.duration_min)} min.`,
+        note,
+        `From ${fmt(p.from)} to ${fmt(p.to)}: https://www.google.com/maps/dir/${p.from[1]},${p.from[0]}/${p.to[1]},${p.to[0]}`,
+        "Based on reports, not a guarantee. If unsure, don't cross.",
+      ].filter(Boolean).join("\n")
+    : "";
+
   return (
-    <div className="sheet" role="dialog" aria-label={t("safeRoute", L)}>
+    <div className="sheet route-sheet" role="dialog" aria-label={t("safeRoute", L)}>
       <header className="sheet-head">
-        <h2>🧭 {t("safeRouteFor", L)} {veh.icon} {veh[L]}</h2>
-        <button className="icon-btn" onClick={p.onClose} aria-label={t("close", L)}>✕</button>
+        <div>
+          <p className="eyebrow">{t("safeRoute", L)}</p>
+          <h2 className="row gap"><VehicleIcon v={p.vehicle} size={22} /> {veh[L]}</h2>
+        </div>
+        <button className="icon-btn" onClick={p.onClose} aria-label={t("close", L)}><X size={20} /></button>
       </header>
 
       {!r && (
@@ -162,57 +206,104 @@ export default function RoutePanel(p: Props) {
           <PlaceField field="from" value={p.from} label={t("from", L)} p={p} />
           <PlaceField field="to" value={p.to} label={t("to", L)} p={p} />
           <button className="btn primary big-btn" disabled={!p.from || !p.to || busy} onClick={go}>
-            {busy ? "…" : t("findRoute", L)}
+            <Navigation size={18} aria-hidden /> {busy ? (L === "hi" ? "खोज रहे हैं…" : "Checking route…") : t("findRoute", L)}
           </button>
           {err && <p className="error-box">{err}</p>}
         </>
       )}
 
-      {r && (
+      {r && sum && (
         <div className="route-result">
-          <div className={`route-note ${r.safe ? (r.avoided_spots.length ? "ok" : "plain") : "bad"}`} role="status">
-            {r.safe ? "✅ " : "⛔ "}{r.note}
-          </div>
-          <div className="legs">
-            {r.normal && r.safe && r.safe.distance_m !== r.normal.distance_m && (
-              <div className="leg normal">
-                <span className="swatch dashed" aria-hidden /> {t("normalRoute", L)}: {(r.normal.distance_m / 1000).toFixed(1)} km · {Math.round(r.normal.duration_min)} min
-                {r.normal.spots_on_route.length > 0 && (
-                  <ul className="small">
-                    {r.normal.spots_on_route.map((s) => (
-                      <li key={s.spotId}>{VERDICT_UI[s.verdict].glyph} {s.place ?? "Flooded spot"} (~{s.depth_high} cm)</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-            {r.safe && (
-              <div className="leg safe">
-                <span className="swatch" aria-hidden /> {veh.icon} {(r.safe.distance_m / 1000).toFixed(1)} km · {Math.round(r.safe.duration_min)} min
-              </div>
-            )}
-          </div>
-          {!!r.compare?.length && <Compare rows={r.compare} lang={L} current={p.vehicle} alt={p.alt} setAlt={p.setAlt} />}
-          {r.safe && p.mode === "live" && (
-            <details className="watch">
-              <summary>🔔 {t("watchRoute", L)}</summary>
-              <div className="row gap">
-                <input className="input" value={contact} placeholder={t("contact", L)} onChange={(e) => setContact(e.target.value)} />
-                <button className="btn" onClick={watch} disabled={!contact.trim()}>{t("subscribe", L)}</button>
-              </div>
-              {subMsg && <p className="small muted">{subMsg}</p>}
-            </details>
+          {outside && (
+            <div className="coverage" role="note">
+              <Info size={18} aria-hidden />
+              <span>{L === "hi"
+                ? "एक बिंदु हमारे रूटिंग क्षेत्र से बाहर है, इसलिए रास्ता अधूरा हो सकता है। यह बाढ़ का फ़ैसला नहीं है।"
+                : "One point is outside the area we have road data for, so this route may be incomplete. This is a coverage limit, not a flood verdict."}</span>
+            </div>
           )}
+
+          <section className={`summary ${sum.cls}`} role="status">
+            <div className="sum-head">
+              <span className="sum-icon"><SumIcon size={20} aria-hidden /></span>
+              <strong>{sum.title[L]}</strong>
+            </div>
+            {leg && (
+              <div className="sum-stats">
+                <span className="sum-big">{(leg.distance_m / 1000).toFixed(1)}<small> km</small></span>
+                <span className="sum-big">{Math.round(leg.duration_min)}<small> min</small></span>
+                {r.safe && r.extra_min > 0 && <span className="pill">+{Math.round(r.extra_min)} min</span>}
+              </div>
+            )}
+            {note && (sum.cls === "detour" || sum.cls === "bad") && <p className="sum-note">{note}</p>}
+            <p className="fresh">
+              {L === "hi" ? "जाँचा गया" : "Checked"} {clock(r.checked_at)} · {r.spots_considered ?? "–"} {L === "hi" ? "रिपोर्ट इस इलाके में" : `live report${r.spots_considered === 1 ? "" : "s"} in this area`}
+            </p>
+            {sum.cls === "unknown" && (
+              <p className="sum-note">{L === "hi" ? "रिपोर्ट न होने का मतलब सूखी सड़क नहीं है। अंडरपास पर ध्यान दें।" : "No reports isn't the same as dry roads. Take care at underpasses."}</p>
+            )}
+          </section>
+
+          {(showNormal || r.safe) && (
+            <section className="rsec legs">
+              {r.safe && (
+                <div className="leg"><span className="swatch" aria-hidden />
+                  <span>{L === "hi" ? "सुझाया रास्ता" : "Suggested route"} · {(r.safe.distance_m / 1000).toFixed(1)} km · {Math.round(r.safe.duration_min)} min</span>
+                </div>
+              )}
+              {showNormal && r.normal && (
+                <div className="leg">
+                  <span className="swatch dashed" aria-hidden />
+                  <span>{t("normalRoute", L)} · {(r.normal.distance_m / 1000).toFixed(1)} km · {Math.round(r.normal.duration_min)} min</span>
+                  {r.normal.spots_on_route.length > 0 && (
+                    <ul className="spotlist">
+                      {r.normal.spots_on_route.map((s) => (
+                        <li key={s.spotId} className={VERDICT_UI[s.verdict].cls}>
+                          <VerdictIcon cls={VERDICT_UI[s.verdict].cls} size={14} /> {s.place ?? "Flooded spot"} · ~{s.depth_high} cm
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
+          {!!r.compare?.length && <Compare rows={r.compare} lang={L} current={p.vehicle} alt={p.alt} setAlt={p.setAlt} />}
+
+          {r.safe && p.mode === "live" && (
+            <section className="rsec alerts">
+              <div className="alerts-head">
+                <Bell size={18} aria-hidden />
+                <div>
+                  <strong>{t("watchRoute", L)}</strong>
+                  <p className="hint">{L === "hi"
+                    ? "इस रास्ते पर आपकी गाड़ी के लिए 'नहीं' वाली नई फ़ोटो रिपोर्ट आए तो संदेश मिलेगा।"
+                    : "We message you when a new photo report on this route is No-go for your vehicle."}</p>
+                </div>
+                {!alertsOpen && <button className="btn small-btn" onClick={() => setAlertsOpen(true)}>{L === "hi" ? "चालू करें" : "Turn on"}</button>}
+              </div>
+              {alertsOpen && (
+                <div className="row gap">
+                  <input className="input grow" value={contact} placeholder={t("contact", L)} onChange={(e) => setContact(e.target.value)} />
+                  <button className="btn" onClick={watch} disabled={!contact.trim()}>{t("subscribe", L)}</button>
+                </div>
+              )}
+              {subMsg && <p className="hint" role="status">{subMsg}</p>}
+            </section>
+          )}
+
           <div className="actions">
-            <button className="btn" onClick={() => { p.setResult(null); p.setAlt(null, null); }}>{L === "hi" ? "बदलें" : "Change"}</button>
-            {r.safe && p.from && p.to && (
-              <a className="btn primary" target="_blank" rel="noreferrer"
-                href={`https://wa.me/?text=${encodeURIComponent(`Safe ${veh.en.toLowerCase()} route: ${r.note} https://www.google.com/maps/dir/${p.from[1]},${p.from[0]}/${p.to[1]},${p.to[0]}`)}`}>
-                📤 {L === "hi" ? "रास्ता भेजें" : "Share route"}
+            {shareText && (
+              <a className="btn primary grow" target="_blank" rel="noreferrer" href={`https://wa.me/?text=${encodeURIComponent(shareText)}`}>
+                <Share2 size={18} aria-hidden /> {L === "hi" ? "रास्ता भेजें" : "Share route"}
               </a>
             )}
+            <button className="btn ghost" onClick={() => { p.setResult(null); p.setAlt(null, null); }}>
+              <ArrowLeft size={18} aria-hidden /> {L === "hi" ? "बदलें" : "Change"}
+            </button>
           </div>
-          <p className="disclaimer">⚠️ {t("disclaimer", L)}</p>
+          <p className="disclaimer"><TriangleAlert size={14} aria-hidden /> {t("disclaimer", L)}</p>
         </div>
       )}
     </div>

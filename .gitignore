@@ -1,12 +1,41 @@
+# Python
 .venv/
 __pycache__/
-.aws-sam/
+*.py[cod]
 .pytest_cache/
-data/demo_cache/
+
+# Node / frontend build
 frontend/node_modules/
 frontend/dist/
 frontend/dev-dist/
-frontend/.env.local
-.DS_Store
-cache/
+*.tsbuildinfo
+npm-debug.log*
+
+# AWS SAM build + deploy artifacts
+.aws-sam/
 samconfig.toml.bak
+*.zip
+
+# Secrets: never commit. Deploy params (AdminToken, model IDs) live in .deploy.local.env;
+# the frontend reads frontend/.env.local. Only the .example templates are tracked.
+.deploy.local.env
+.env
+.env.*
+!.env.example
+frontend/.env.local
+frontend/.env.*.local
+*_accessKeys.csv
+*credentials*.csv
+*.pem
+
+# Data caches
+data/demo_cache/
+cache/
+
+# Editors / OS / scratch
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+*.tmp

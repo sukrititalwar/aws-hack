@@ -1,3 +1,5 @@
+import { ArrowLeft, Camera, CircleCheck, CloudRain, HardHat, Map as MapIcon, X } from "lucide-react";
+import { VerdictIcon } from "../icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { ago, t, type Lang } from "../i18n";
@@ -63,8 +65,8 @@ export default function DrainSheet({ lang, center, onClose }: Props) {
   return (
     <div className="sheet" role="dialog" aria-label={t("drains", lang)}>
       <header className="sheet-head">
-        <h2>🕳️ {t("drains", lang)} · DrainReady</h2>
-        <button className="icon-btn" onClick={onClose} aria-label={t("close", lang)}>✕</button>
+        <div><p className="eyebrow">DrainReady</p><h2>{t("drains", lang)}</h2></div>
+        <button className="icon-btn" onClick={onClose} aria-label={t("close", lang)}><X size={20} /></button>
       </header>
       <div className="seg tabs" role="tablist">
         {(["list", "report", "metrics"] as Tab[]).map((k) => (
@@ -84,14 +86,14 @@ export default function DrainSheet({ lang, center, onClose }: Props) {
               return (
                 <li key={r.groupId}>
                   <button onClick={() => setOpen(r)}>
-                    <span className={`sevchip ${sev.cls}`}><i aria-hidden>{sev.glyph}</i> {sev[lang]}</span>
+                    <span className={`sevchip ${sev.cls}`}><VerdictIcon cls={sev.cls} size={13} /> {sev[lang]}</span>
                     <span className="drain-main">
                       <strong>{r.nearHotspot ?? (r.blockage_type ? r.blockage_type : lang === "hi" ? "नाला" : "Drain")}</strong>
                       <span className="small muted">
                         {rc(r.reportCount, lang)} · {ago(Date.now() / 1000 - r.firstReported, lang)}
-                        {r.assignedTo ? ` · 👷 ${r.assignedTo}` : ""}
+                        {r.assignedTo ? <> · <HardHat size={13} aria-label="assigned to" /> {r.assignedTo}</> : ""}
                       </span>
-                      <span className="small">{r.urgent ? "🌧 " : ""}{r.reasons.join(" · ")}</span>
+                      <span className="small">{r.urgent ? <CloudRain size={13} aria-label="rain forecast" /> : null} {r.reasons.join(" · ")}</span>
                     </span>
                     <span className="score" title="priority score">{r.score.toFixed(1)}</span>
                   </button>
@@ -166,7 +168,7 @@ function ReportTab({ lang, center, onDone }: { lang: Lang; center: LonLat; onDon
     return (
       <div className="result">
         <div className={`big ${sev.cls}`}>
-          <div className="bigline"><span>✅ {s("thanks", lang)}</span></div>
+          <div className="bigline"><CircleCheck size={22} aria-hidden /><span>{s("thanks", lang)}</span></div>
           <p className="bigwhy">{sev[lang]}{result.blockage_type ? ` · ${result.blockage_type}` : ""}</p>
         </div>
         {(lang === "hi" ? result.reasoning_hi : result.reasoning) && <p className="reasoning">“{lang === "hi" ? result.reasoning_hi : result.reasoning}”</p>}
@@ -181,7 +183,7 @@ function ReportTab({ lang, center, onDone }: { lang: Lang; center: LonLat; onDon
       {!file ? (
         <label className="camera">
           <input type="file" accept="image/*,video/*" capture="environment" onChange={(e) => pick(e.target.files?.[0])} />
-          <span className="camera-icon" aria-hidden>🕳️</span>
+          <span className="camera-icon" aria-hidden><Camera size={44} strokeWidth={1.5} /></span>
           <span>{t("photoOrVideo", lang)}</span>
         </label>
       ) : (
@@ -204,7 +206,7 @@ function DetailTab({ row, lang, token, setToken, onBack }: { row: DrainRow; lang
   const sev = SEV[d.severity ?? "partial"];
 
   async function assign() {
-    try { await api.assignDrain(d.groupId, worker.trim(), token); setMsg("✅"); refresh(); }
+    try { await api.assignDrain(d.groupId, worker.trim(), token); setMsg(lang === "hi" ? "सौंप दिया" : "Assigned"); refresh(); }
     catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
   }
   async function afterPhoto(f?: File) {
@@ -216,7 +218,7 @@ function DetailTab({ row, lang, token, setToken, onBack }: { row: DrainRow; lang
       for (let i = 0; i < 30; i++) {
         await sleep(1800);
         const x = await api.drain(d.groupId);
-        if (x.status === "cleared" || x.afterNote) { setD(x); setMsg(x.status === "cleared" ? "✅" : x.afterNote ?? ""); return; }
+        if (x.status === "cleared" || x.afterNote) { setD(x); setMsg(x.status === "cleared" ? (lang === "hi" ? "साफ़ होने की पुष्टि" : "Verified clear") : x.afterNote ?? ""); return; }
       }
       setMsg("Still checking, refresh in a moment.");
     } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
@@ -224,27 +226,27 @@ function DetailTab({ row, lang, token, setToken, onBack }: { row: DrainRow; lang
 
   return (
     <div className="result">
-      <button className="link" onClick={onBack}>← {s("list", lang)}</button>
+      <button className="link row gap" onClick={onBack}><ArrowLeft size={16} aria-hidden /> {s("list", lang)}</button>
       <div className={`big ${sev.cls}`}>
         <div className="bigline"><span>{sev[lang]}</span><span className="bigglyph">{sev.glyph}</span></div>
         <p className="bigwhy">{d.reasons.join(" · ")}</p>
       </div>
       {d.photoUrl && <img className="photo" src={d.photoUrl} alt="Reported drain" />}
-      {d.afterUrl && <><p className="small muted">{lang === "hi" ? "बाद की फ़ोटो" : "After"} {d.clearanceVerified ? "✔ verified clear" : ""}</p><img className="photo" src={d.afterUrl} alt="After clearance" /></>}
+      {d.afterUrl && <><p className="small muted">{lang === "hi" ? "बाद की फ़ोटो" : "After"} {d.clearanceVerified ? <><CircleCheck size={13} aria-hidden /> verified clear</> : ""}</p><img className="photo" src={d.afterUrl} alt="After clearance" /></>}
       {(lang === "hi" ? d.reasoning_hi : d.reasoning) && <p className="reasoning">“{lang === "hi" ? d.reasoning_hi : d.reasoning}”</p>}
-      <p className="small">{d.status === "assigned" ? `👷 ${d.assignedTo}` : s(d.status === "cleared" ? "cleared" : "open", lang)} · {rc(d.reportCount, lang)}</p>
-      <a className="btn" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${d.lat},${d.lon}`}>🗺️ {lang === "hi" ? "मैप में खोलें" : "Open in Maps"}</a>
+      <p className="small">{d.status === "assigned" ? <><HardHat size={14} aria-label="assigned to" /> {d.assignedTo}</> : s(d.status === "cleared" ? "cleared" : "open", lang)} · {rc(d.reportCount, lang)}</p>
+      <a className="btn" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${d.lat},${d.lon}`}><MapIcon size={18} aria-hidden /> {lang === "hi" ? "मैप में खोलें" : "Open in Maps"}</a>
 
       {d.status !== "cleared" && (
         <details className="watch" open={!!token}>
-          <summary>👷 {lang === "hi" ? "डिस्पैचर" : "Dispatcher"}</summary>
+          <summary><HardHat size={16} aria-hidden /> {lang === "hi" ? "डिस्पैचर" : "Dispatcher"}</summary>
           <input className="input" type="password" value={token} placeholder={s("code", lang)} onChange={(e) => setToken(e.target.value)} />
           <div className="row gap" style={{ marginTop: 8 }}>
             <input className="input" value={worker} placeholder={s("worker", lang)} onChange={(e) => setWorker(e.target.value)} />
             <button className="btn" disabled={!worker.trim() || !token} onClick={assign}>{s("assign", lang)}</button>
           </div>
           <label className="btn" style={{ marginTop: 8 }}>
-            📷 {s("after", lang)}
+            <Camera size={18} aria-hidden /> {s("after", lang)}
             <input type="file" accept="image/*" capture="environment" hidden disabled={!token} onChange={(e) => afterPhoto(e.target.files?.[0])} />
           </label>
         </details>

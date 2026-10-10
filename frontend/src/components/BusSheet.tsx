@@ -1,3 +1,5 @@
+import { Bus, CircleCheck, CloudRain, X } from "lucide-react";
+import { VerdictIcon } from "../icons";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { t, VERDICT_UI, type Lang } from "../i18n";
@@ -14,8 +16,8 @@ export default function BusSheet({ mode, at, lang, onClose }: { mode: Mode; at?:
   return (
     <div className="sheet" role="dialog" aria-label="Bus routes affected">
       <header className="sheet-head">
-        <h2>🚌 {lang === "hi" ? "प्रभावित बस रूट" : "Bus routes affected"}</h2>
-        <button className="icon-btn" onClick={onClose} aria-label={t("close", lang)}>✕</button>
+        <h2 className="row gap"><Bus size={22} aria-hidden /> {lang === "hi" ? "प्रभावित बस रूट" : "Bus routes affected"}</h2>
+        <button className="icon-btn" onClick={onClose} aria-label={t("close", lang)}><X size={20} /></button>
       </header>
       {err && <p className="error-box">{err}</p>}
       {!data && !err && <div className="spinner" aria-hidden />}
@@ -23,7 +25,7 @@ export default function BusSheet({ mode, at, lang, onClose }: { mode: Mode; at?:
         <p className="muted">{lang === "hi" ? "इस शहर के बस रूट का डेटा अभी नहीं है।" : "No bus route data loaded for this city yet (import the city's GTFS feed)."}</p>
       )}
       {data && data.routes_known > 0 && data.affected.length === 0 && (
-        <p>✅ {lang === "hi" ? `${data.routes_known} रूट जाँचे: कोई प्रभावित नहीं।` : `Checked ${data.routes_known} routes: none pass a flooded spot right now.`}</p>
+        <p className="row gap"><CircleCheck size={18} aria-hidden /> {lang === "hi" ? `${data.routes_known} रूट जाँचे: कोई प्रभावित नहीं।` : `Checked ${data.routes_known} routes: none pass a flooded spot right now.`}</p>
       )}
       {data && data.affected.length > 0 && (
         <>
@@ -36,10 +38,10 @@ export default function BusSheet({ mode, at, lang, onClose }: { mode: Mode; at?:
                 <div className="small">
                   {r.spots.map((s) => (
                     <div key={s.spotId}>
-                      {VERDICT_UI[s.bus].glyph} {s.place ?? "Flooded spot"} · ~{s.depth_high} cm
+                      <VerdictIcon cls={VERDICT_UI[s.bus].cls} size={13} /> {s.place ?? "Flooded spot"} · ~{s.depth_high} cm
                       {s.bus === "NO_GO" ? (lang === "hi" ? " · बस नहीं जा सकती" : " · bus can't pass") : s.bus === "RISKY" ? (lang === "hi" ? " · धीरे" : " · slow / risky") : ""}
                       {s.pedestrian === "NO_GO" ? (lang === "hi" ? " · स्टॉप तक पैदल ख़तरनाक" : " · unsafe to walk to stops") : ""}
-                      {s.predicted ? " 🌧" : ""}
+                      {s.predicted ? <> · <CloudRain size={13} aria-label="predicted" /></> : ""}
                     </div>
                   ))}
                 </div>

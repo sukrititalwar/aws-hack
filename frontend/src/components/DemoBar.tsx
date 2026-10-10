@@ -1,3 +1,4 @@
+import { Pause, Play } from "lucide-react";
 import { useEffect } from "react";
 import { t, type Lang } from "../i18n";
 import { fmtTime } from "../util";
@@ -29,7 +30,7 @@ export default function DemoBar({ start, end, at, setAt, playing, setPlaying, la
     <div className="demobar" role="group" aria-label={t("demo", lang)}>
       <button className="icon-btn play" onClick={() => { if (at >= end) setAt(start); setPlaying(!playing); }}
         aria-label={playing ? t("pause", lang) : t("play", lang)}>
-        {playing ? "⏸" : "▶"}
+        {playing ? <Pause size={20} /> : <Play size={20} />}
       </button>
       <div className="demo-main">
         <div className="demo-time">

@@ -1,3 +1,4 @@
+import { Bus, Camera, CloudRain, History, Layers, MessageCircle, Navigation, Radio, Shield, Sun, TriangleAlert, Waves, WifiOff, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, API, CITIES, setCity as setApiCity, WHATSAPP_JOIN, WHATSAPP_NUMBER } from "./api";
 import BusSheet from "./components/BusSheet";
@@ -7,7 +8,8 @@ import MapView from "./components/MapView";
 import ReportFlow from "./components/ReportFlow";
 import RoutePanel from "./components/RoutePanel";
 import SpotSheet from "./components/SpotSheet";
-import { t, VEHICLES, VERDICT_UI, type Lang } from "./i18n";
+import { t, VEHICLES, type Lang } from "./i18n";
+import { VehicleIcon, VerdictIcon } from "./icons";
 import type { CompareRow, Hotspot, LonLat, Mode, Report, RouteResult, Spot, Vehicle, Weather } from "./types";
 import { getPosition, store, stored } from "./util";
 
@@ -21,18 +23,55 @@ const initialCity = (() => {
 })();
 setApiCity(initialCity);
 
-function RainBanner({ w, lang, city }: { w: Weather | null; lang: Lang; city: string }) {
+/** Compact live-rain status for the toolbar. Full numbers are in the tooltip / screen-reader label. */
+function RainStatus({ w, lang, city }: { w: Weather | null; lang: Lang; city: string }) {
   if (!w) return null;
   const name = CITIES[city][lang === "hi" ? "hi" : "label"];
   const cls = w.hotspotsAtRisk > 0 ? "storm" : w.rainPast3h >= 2 || w.maxRainNowAtHotspots >= 1 ? "wet" : "";
   const mins = Math.max(0, Math.round((Date.now() / 1000 - w.updatedAt) / 60));
-  const text = lang === "hi"
-    ? `${name}: पिछले 3 घंटे ${w.rainPast3h.toFixed(1)} मिमी · अभी ${w.rainNow.toFixed(1)} मिमी/घं · अगले 3 घंटे ${w.rainNext3h.toFixed(1)} मिमी${w.hotspotsAtRisk ? ` · ${w.hotspotsAtRisk} जगहें ख़तरे में` : ""}`
-    : `${name}: ${w.rainPast3h.toFixed(1)} mm last 3 h · ${w.rainNow.toFixed(1)} mm/h now · ${w.rainNext3h.toFixed(1)} mm next 3 h${w.hotspotsAtRisk ? ` · ${w.hotspotsAtRisk} hotspots at risk` : ""}`;
+  const full = lang === "hi"
+    ? `${name}: पिछले 3 घंटे ${w.rainPast3h.toFixed(1)} मिमी · अभी ${w.rainNow.toFixed(1)} मिमी/घं · अगले 3 घंटे ${w.rainNext3h.toFixed(1)} मिमी${w.hotspotsAtRisk ? ` · ${w.hotspotsAtRisk} जगहें ख़तरे में` : ""} · ${mins} मिनट पहले`
+    : `${name}: ${w.rainPast3h.toFixed(1)} mm last 3 h · ${w.rainNow.toFixed(1)} mm/h now · ${w.rainNext3h.toFixed(1)} mm next 3 h${w.hotspotsAtRisk ? ` · ${w.hotspotsAtRisk} hotspots at risk` : ""} · updated ${mins} min ago`;
+  const Icon = cls ? CloudRain : Sun;
   return (
-    <div className={`banner rain small ${cls}`} title={w.source}>
-      <span aria-hidden>{cls ? "🌧️" : "☀️"}</span>
-      <span>{text} <span className="muted">· {mins} min</span></span>
+    <span className={`rainpill ${cls}`} title={`${full}\n${w.source}`} aria-label={full} role="status">
+      <Icon size={16} aria-hidden />
+      <span>{w.rainNow.toFixed(1)} mm/h</span>
+      <span className="rp-extra">· {w.rainNext3h.toFixed(0)} mm {lang === "hi" ? "अगले 3 घं" : "next 3 h"}</span>
+      {w.hotspotsAtRisk > 0 && <span className="rp-risk">{w.hotspotsAtRisk} {lang === "hi" ? "ख़तरे में" : "at risk"}</span>}
+      <span className="rp-age">{mins}m</span>
+    </span>
+  );
+}
+
+/** Map legend: colour + icon + words, collapsible so it never covers the map on a phone. */
+function Legend({ lang, raised }: { lang: Lang; raised: boolean }) {
+  const [open, setOpen] = useState(() => window.matchMedia?.("(min-width: 760px)").matches ?? false);
+  const hi = lang === "hi";
+  const rows: [React.ReactNode, string][] = [
+    [<span className="lg-dot go"><VerdictIcon cls="go" size={12} /></span>, hi ? "पार कर सकते हैं" : "Passable for your vehicle"],
+    [<span className="lg-dot risky"><VerdictIcon cls="risky" size={12} /></span>, hi ? "जोखिम भरा" : "Potentially unsafe"],
+    [<span className="lg-dot nogo"><VerdictIcon cls="nogo" size={12} /></span>, hi ? "असुरक्षित" : "Unsafe"],
+    [<span className="lg-dot risky"><VerdictIcon cls="risky" glyph="?" size={12} /></span>, hi ? "जाँच ज़रूरी (अनिश्चित)" : "Requires inspection (unsure)"],
+    [<span className="lg-dot dashed" />, hi ? "बारिश से अनुमान" : "Predicted from rain, no photo yet"],
+    [<span className="lg-ring" />, hi ? "अक्सर भरता है" : "Floods often (news-cited)"],
+    [<span className="lg-badges"><CloudRain size={13} /><Shield size={13} /><MessageCircle size={13} /></span>, hi ? "बारिश · आधिकारिक · सोशल" : "Rain · official · social source"],
+  ];
+  return (
+    <div className={`legend-ctl${raised ? " raised" : ""}`}>
+      {open ? (
+        <div className="legend-card" role="region" aria-label={hi ? "संकेत" : "Map legend"}>
+          <div className="legend-head">
+            <strong>{hi ? "आपकी सवारी के लिए" : "For your vehicle"}</strong>
+            <button className="icon-btn sm" onClick={() => setOpen(false)} aria-label={t("close", lang)}><X size={16} /></button>
+          </div>
+          <ul>{rows.map(([icon, label]) => <li key={label}>{icon}<span>{label}</span></li>)}</ul>
+        </div>
+      ) : (
+        <button className="legend-btn" onClick={() => setOpen(true)} aria-expanded={false}>
+          <Layers size={18} aria-hidden /> {hi ? "संकेत" : "Legend"}
+        </button>
+      )}
     </div>
   );
 }
@@ -150,55 +189,49 @@ export default function App() {
         onSpot={(s) => setPanel({ kind: "spot", spot: s })} onHotspot={(h) => setPanel({ kind: "hotspot", h })} />
 
       <header className="topbar">
-        <div className="toprow">
-          <div className="row gap">
-            <span className="brand" aria-hidden>🌊</span>
-            <select className="citysel" value={city} onChange={(e) => setCity(e.target.value)} aria-label="City">
-              {Object.entries(CITIES).map(([k, c]) => <option key={k} value={k}>{lang === "hi" ? c.hi : c.label}</option>)}
-            </select>
+        <div className="toolbar">
+          <span className="brand" title="Can My Scooter Cross?"><Waves size={20} aria-hidden /><span className="brand-name">Can My Scooter Cross?</span></span>
+          <select className="citysel" value={city} onChange={(e) => setCity(e.target.value)} aria-label="City">
+            {Object.entries(CITIES).map(([k, c]) => <option key={k} value={k}>{lang === "hi" ? c.hi : c.label}</option>)}
+          </select>
+          {mode === "live" && <RainStatus w={weather} lang={lang} city={city} />}
+          <span className="spacer" />
+          <div className="seg" role="radiogroup" aria-label="Mode">
+            <button role="radio" aria-checked={mode === "live"} className={mode === "live" ? "on" : ""} onClick={() => setMode("live")}><Radio size={15} aria-hidden /> <span className="live-label">{t("live", lang)}</span></button>
+            <button role="radio" aria-checked={mode === "demo"} className={mode === "demo" ? "on" : ""} onClick={() => setMode("demo")}><History size={15} aria-hidden /> <span className="seg-label">{t("demo", lang)}</span></button>
           </div>
-          <div className="row gap">
-            <div className="seg" role="radiogroup" aria-label="Mode">
-              <button role="radio" aria-checked={mode === "live"} className={mode === "live" ? "on" : ""} onClick={() => setMode("live")}>● {t("live", lang)}</button>
-              <button role="radio" aria-checked={mode === "demo"} className={mode === "demo" ? "on" : ""} onClick={() => setMode("demo")}>⏪ {t("demo", lang)}</button>
-            </div>
-            <button className="chip" onClick={() => setLang(lang === "en" ? "hi" : "en")} aria-label="Language">{lang === "en" ? "हिं" : "EN"}</button>
-          </div>
+          <button className="chip lang" onClick={() => setLang(lang === "en" ? "hi" : "en")} aria-label="Language">{lang === "en" ? "हिं" : "EN"}</button>
         </div>
         <div className="vehicles" role="radiogroup" aria-label={t("imOn", lang)}>
-          <span className="imon">{t("imOn", lang)}:</span>
           {VEHICLES.map((v) => (
             <button key={v.id} role="radio" aria-checked={vehicle === v.id} className={`vchip${vehicle === v.id ? " on" : ""}`} onClick={() => setVehicle(v.id)}>
-              <span aria-hidden>{v.icon}</span> {v[lang]}
+              <VehicleIcon v={v.id} size={18} /> <span>{v[lang]}</span>
             </button>
           ))}
         </div>
-        <div className="legend" aria-hidden>
-          {(["GO", "RISKY", "NO_GO"] as const).map((k) => (
-            <span key={k} className={`lg ${VERDICT_UI[k].cls}`}><i>{VERDICT_UI[k].glyph}</i> {VERDICT_UI[k][lang]}</span>
-          ))}
-          <span className="lg ringlg"><i /> {lang === "hi" ? "अक्सर भरता है" : "Floods often"}</span>
-          <span className="muted">· {t("legend", lang)}</span>
-        </div>
-        {mode === "live" && <RainBanner w={weather} lang={lang} city={city} />}
-        {offline && <div className="banner warn">📴 {t("offline", lang)}</div>}
+        {offline && <div className="banner warn"><WifiOff size={16} aria-hidden /> {t("offline", lang)}</div>}
         {!API && <div className="banner warn">{t("noApi", lang)}: set VITE_API_URL</div>}
-        {err && API && <div className="banner warn" onClick={() => setErr("")}>{err}</div>}
-                {spots.length > 0 && panel.kind === "none" && (
-          <div className="banner info small">{worstCount} {lang === "hi" ? "जगहें आपकी सवारी के लिए बंद" : `spot${worstCount === 1 ? "" : "s"} NO-GO for your vehicle`} · {spots.length} {lang === "hi" ? "कुल" : "total"}</div>
+        {err && API && <button className="banner warn" onClick={() => setErr("")}><TriangleAlert size={16} aria-hidden /> {err}</button>}
+        {spots.length > 0 && panel.kind === "none" && (
+          <div className={`statuspill${worstCount ? " nogo" : ""}`} role="status">
+            {worstCount > 0 && <VerdictIcon cls="nogo" size={14} />}
+            {worstCount} {lang === "hi" ? "जगहें आपकी सवारी के लिए असुरक्षित" : `unsafe for ${VEHICLES.find((v) => v.id === vehicle)!.en.toLowerCase()}`} · {spots.length} {lang === "hi" ? "कुल रिपोर्ट" : "reported"}
+          </div>
         )}
       </header>
 
+      {panel.kind === "none" && <Legend lang={lang} raised={mode === "demo"} />}
+
       {panel.kind === "none" && (
         <div className={`fabs${mode === "demo" ? " above-demo" : ""}`}>
-          {mode === "live" && <button className="fab primary" onClick={() => setPanel({ kind: "report" })}>📷 {t("report", lang)}</button>}
-          <button className="fab" onClick={() => openRoute()}>🧭 {t("safeRoute", lang)}</button>
-          {vehicle === "bus" && <button className="fab" onClick={() => setPanel({ kind: "bus" })} aria-label="Bus routes affected">🚌</button>}
-          {mode === "live" && <button className="fab" style={{ flex: "0 0 auto" }} onClick={() => setPanel({ kind: "drains" })} aria-label="Blocked drains">🕳️</button>}
+          {mode === "live" && <button className="fab primary" onClick={() => setPanel({ kind: "report" })}><Camera size={20} aria-hidden /> {t("report", lang)}</button>}
+          <button className="fab" onClick={() => openRoute()}><Navigation size={20} aria-hidden /> {t("safeRoute", lang)}</button>
+          {vehicle === "bus" && <button className="fab round" onClick={() => setPanel({ kind: "bus" })} aria-label="Bus routes affected" title="Bus routes affected"><Bus size={20} /></button>}
+          {mode === "live" && <button className="fab round" onClick={() => setPanel({ kind: "drains" })} aria-label={t("drains", lang)} title={t("drains", lang)}><DrainIcon /></button>}
           {mode === "live" && WHATSAPP_NUMBER && (
-            <a className="fab wa" style={{ flex: "0 0 auto", textDecoration: "none", display: "grid", placeItems: "center" }}
+            <a className="fab round wa"
               href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(WHATSAPP_JOIN || "hi")}`} target="_blank" rel="noreferrer"
-              aria-label={lang === "hi" ? "WhatsApp से रिपोर्ट करें" : "Report on WhatsApp"}>💬</a>
+              aria-label={lang === "hi" ? "WhatsApp से रिपोर्ट करें" : "Report on WhatsApp"}><MessageCircle size={20} /></a>
           )}
         </div>
       )}
@@ -226,11 +259,14 @@ export default function App() {
       {panel.kind === "hotspot" && (
         <div className="sheet" role="dialog" aria-label={panel.h.name}>
           <header className="sheet-head">
-            <h2>◯ {lang === "hi" ? panel.h.name_hi ?? panel.h.name : panel.h.name}</h2>
-            <button className="icon-btn" onClick={() => setPanel({ kind: "none" })} aria-label={t("close", lang)}>✕</button>
+            <div>
+              <p className="eyebrow">{lang === "hi" ? "अक्सर भरने वाली जगह" : "Known flood spot"}</p>
+              <h2>{lang === "hi" ? panel.h.name_hi ?? panel.h.name : panel.h.name}</h2>
+            </div>
+            <button className="icon-btn" onClick={() => setPanel({ kind: "none" })} aria-label={t("close", lang)}><X size={20} /></button>
           </header>
           <p>{t("hotspot", lang)}.</p>
-          {panel.h.risk === "likely_flooded_soon" && <div className="banner warn">🌧️ {t("rainSoon", lang)} ({Math.round(panel.h.rainNext3h ?? 0)} mm {lang === "hi" ? "अगले 3 घंटे" : "next 3 h"})</div>}
+          {panel.h.risk === "likely_flooded_soon" && <div className="banner warn"><CloudRain size={16} aria-hidden /> {t("rainSoon", lang)} ({Math.round(panel.h.rainNext3h ?? 0)} mm {lang === "hi" ? "अगले 3 घंटे" : "next 3 h"})</div>}
           {panel.h.rainPast3h != null && (
             <p className="small">{lang === "hi" ? "बारिश" : "Rain"}: {panel.h.rainPast3h.toFixed(1)} mm {lang === "hi" ? "पिछले 3 घंटे" : "last 3 h"} · {(panel.h.rainNext3h ?? 0).toFixed(1)} mm {lang === "hi" ? "अगले 3 घंटे" : "next 3 h"}</p>
           )}
@@ -241,9 +277,19 @@ export default function App() {
               {panel.h.osm_match && <><br /><span className="muted">{lang === "hi" ? "स्थान" : "Location"}: {panel.h.osm_match}</span></>}
             </p>
           )}
-          <div className="actions"><button className="btn primary" onClick={() => openRoute([panel.h.lon, panel.h.lat])}>🧭 {t("routeFromHere", lang)}</button></div>
+          <div className="actions"><button className="btn primary" onClick={() => openRoute([panel.h.lon, panel.h.lat])}><Navigation size={18} aria-hidden /> {t("routeFromHere", lang)}</button></div>
         </div>
       )}
     </div>
+  );
+}
+
+/** Drain grate: lucide has no drain icon. */
+function DrainIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M7 9v6M10.5 9v6M14 9v6M17.5 9v6" />
+    </svg>
   );
 }

@@ -2,15 +2,15 @@ import type { Vehicle, Verdict } from "./types";
 
 export type Lang = "en" | "hi";
 
-export const VEHICLES: { id: Vehicle; icon: string; en: string; hi: string }[] = [
-  { id: "pedestrian", icon: "🚶", en: "Walking", hi: "पैदल" },
-  { id: "bicycle", icon: "🚲", en: "Bicycle", hi: "साइकिल" },
-  { id: "scooter", icon: "🛵", en: "Scooter", hi: "स्कूटर" },
-  { id: "auto", icon: "🛺", en: "Auto", hi: "ऑटो" },
-  { id: "car", icon: "🚗", en: "Car", hi: "कार" },
-  { id: "suv", icon: "🚙", en: "SUV", hi: "एसयूवी" },
-  { id: "bus", icon: "🚌", en: "Bus", hi: "बस" },
-  { id: "ambulance", icon: "🚑", en: "Ambulance", hi: "एम्बुलेंस" },
+export const VEHICLES: { id: Vehicle; en: string; hi: string }[] = [
+  { id: "pedestrian", en: "Walking", hi: "पैदल" },
+  { id: "bicycle", en: "Bicycle", hi: "साइकिल" },
+  { id: "scooter", en: "Scooter", hi: "स्कूटर" },
+  { id: "auto", en: "Auto", hi: "ऑटो" },
+  { id: "car", en: "Car", hi: "कार" },
+  { id: "suv", en: "SUV", hi: "एसयूवी" },
+  { id: "bus", en: "Bus", hi: "बस" },
+  { id: "ambulance", en: "Ambulance", hi: "एम्बुलेंस" },
 ];
 export const vehicleInfo = (v: Vehicle) => VEHICLES.find((x) => x.id === v)!;
 
