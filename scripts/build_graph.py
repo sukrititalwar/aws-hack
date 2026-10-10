@@ -16,13 +16,17 @@ import sys
 
 # Andheri - Vile Parle - Santacruz West: covers Andheri subway and Milan subway plus the lanes
 # around them. ~4.7 km x 6 km. Keep it small so Lambda cold starts stay fast.
+# A city can have several separate areas; each becomes its own routable network in one graph file.
+# The names are shown to users when a trip falls outside coverage. bbox = (west, south, east, north).
 AREAS = {
-    # (west, south, east, north)
-    "mumbai": (72.825, 19.075, 72.870, 19.130),     # Andheri / Milan subway
-    "delhi": (77.195, 28.555, 77.265, 28.645),      # Minto Bridge, ITO, Pragati Maidan tunnel, Moolchand, Ashram
-    "gurugram": (77.000, 28.420, 77.110, 28.510),   # Hero Honda, Rajiv Chowk, Subhash Chowk, IFFCO, Golf Course Rd, Ambience
-    "kochi": (76.270, 9.950, 76.325, 10.035),       # MG Road, Jos/Woodlands Jn, KSRTC, Kaloor, Edappally, Vyttila
-    "bengaluru": (77.600, 12.905, 77.645, 12.935),  # Silk Board
+    "mumbai": [("Andheri, Vile Parle, Santacruz West", (72.825, 19.075, 72.870, 19.130))],
+    "delhi": [
+        ("Central Delhi: Minto Bridge, ITO, Pragati Maidan, Moolchand", (77.195, 28.555, 77.265, 28.645)),
+        ("North-west Delhi: DTU, Rohini, Samaypur Badli", (77.095, 28.715, 77.165, 28.770)),
+    ],
+    "gurugram": [("Hero Honda Chowk, Rajiv Chowk, IFFCO, Golf Course Rd", (77.000, 28.420, 77.110, 28.510))],
+    "kochi": [("MG Road, Kaloor, Edappally, Vyttila", (76.270, 9.950, 76.325, 10.035))],
+    "bengaluru": [("Silk Board", (77.600, 12.905, 77.645, 12.935))],
 }
 
 # Must match backend/common/routing.py
@@ -53,16 +57,23 @@ def main():
     ap.add_argument("--city", default="mumbai", choices=sorted(AREAS))
     ap.add_argument("--bucket", help="upload to s3://<bucket>/graphs/<city>.json.gz")
     ap.add_argument("--out-dir", default=os.path.join(os.path.dirname(__file__), "..", "data", "graphs"))
+    ap.add_argument("--skip-bus", action="store_true", help="don't fetch OSM bus routes (slow for big areas)")
     args = ap.parse_args()
 
     import osmnx as ox
     ox.settings.useful_tags_way = list(set(ox.settings.useful_tags_way + ["tunnel", "bridge", "layer", "covered", "name", "service", "access"]))
 
-    west, south, east, north = AREAS[args.city]
-    print(f"Downloading OSM network for {args.city} bbox {AREAS[args.city]} ...")
-    # OSMnx's "all" network (galis included); parking aisles, driveways and private roads are
-    # dropped below. (A custom_filter silently lost most residential lanes, so filter in Python.)
-    G = ox.graph_from_bbox(bbox=(west, south, east, north), network_type="all", simplify=True, retain_all=False)
+    import networkx as nx
+    areas = AREAS[args.city]
+    west, south = min(b[0] for _, b in areas), min(b[1] for _, b in areas)
+    east, north = max(b[2] for _, b in areas), max(b[3] for _, b in areas)
+    graphs = []
+    for name, bbox in areas:
+        print(f"Downloading OSM network for {args.city} / {name} bbox {bbox} ...")
+        # OSMnx's "all" network (galis included); parking aisles, driveways and private roads are
+        # dropped below. (A custom_filter silently lost most residential lanes, so filter in Python.)
+        graphs.append(ox.graph_from_bbox(bbox=bbox, network_type="all", simplify=True, retain_all=False))
+    G = nx.compose_all(graphs) if len(graphs) > 1 else graphs[0]  # OSM node ids are shared, so overlaps merge
     print(f"  {G.number_of_nodes()} nodes, {G.number_of_edges()} directed edges")
 
     idx = {n: i for i, n in enumerate(G.nodes)}
@@ -99,8 +110,9 @@ def main():
             underpasses.append({"type": "Feature", "properties": {"name": name or "Underpass", "highway": hw},
                                 "geometry": {"type": "LineString", "coordinates": g}})
 
-    out = {"city": args.city, "bbox": AREAS[args.city], "source": "© OpenStreetMap contributors (ODbL)",
-           "nodes": nodes, "edges": edges}
+    out = {"city": args.city, "bbox": [west, south, east, north],
+           "areas": [{"name": name, "bbox": list(bbox)} for name, bbox in areas],
+           "source": "© OpenStreetMap contributors (ODbL)", "nodes": nodes, "edges": edges}
     os.makedirs(args.out_dir, exist_ok=True)
     path = os.path.join(args.out_dir, f"{args.city}.json.gz")
     raw = json.dumps(out, separators=(",", ":")).encode()
@@ -116,6 +128,8 @@ def main():
 
     bpath = os.path.join(os.path.dirname(__file__), "..", "data", f"bus_routes_{args.city}.json")
     try:
+        if args.skip_bus:
+            raise RuntimeError("--skip-bus")
         routes = fetch_bus_routes(west, south, east, north)
         json.dump({"city": args.city, "source": "© OpenStreetMap contributors (ODbL)", "routes": routes},
                   open(bpath, "w"), separators=(",", ":"))

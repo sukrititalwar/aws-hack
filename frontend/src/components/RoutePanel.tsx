@@ -1,9 +1,9 @@
-import { ArrowLeft, Bell, Info, LocateFixed, MapPinned, Navigation, OctagonX, Route as RouteIcon, Share2, ShieldQuestion, TriangleAlert, X } from "lucide-react";
+import { ArrowLeft, Bell, Info, LocateFixed, MapPinned, MapPinOff, Scan, Navigation, OctagonX, Route as RouteIcon, Share2, ShieldQuestion, TriangleAlert, X } from "lucide-react";
 import { useState } from "react";
 import { api, geocode, hasLocationKey } from "../api";
 import { t, VERDICT_UI, vehicleInfo, type Lang } from "../i18n";
 import { VehicleIcon, VerdictIcon } from "../icons";
-import type { CompareRow, LonLat, Mode, RouteResult, Vehicle } from "../types";
+import type { CompareRow, CoverageArea, LonLat, Mode, RouteResult, Vehicle } from "../types";
 import { getPosition } from "../util";
 
 type Field = "from" | "to";
@@ -24,6 +24,7 @@ interface Props {
   setResult: (r: RouteResult | null) => void;
   alt: Vehicle | null;
   setAlt: (v: Vehicle | null, g: CompareRow["geometry"] | null) => void;
+  showCoverage: (areas: CoverageArea[] | null) => void;
   onClose: () => void;
 }
 
@@ -212,7 +213,36 @@ export default function RoutePanel(p: Props) {
         </>
       )}
 
-      {r && sum && (
+      {r && outside && !r.normal && (
+        <div className="route-result">
+          <section className="summary unknown" role="status">
+            <div className="sum-head">
+              <span className="sum-icon"><MapPinOff size={20} aria-hidden /></span>
+              <strong>{L === "hi" ? "यह सफ़र हमारे कवरेज से बाहर है" : "Outside our coverage"}</strong>
+            </div>
+            <p className="sum-note">{note}</p>
+            <p className="sum-note">{L === "hi"
+              ? "यह बाढ़ का फ़ैसला नहीं है। हमारे पास इन इलाक़ों का सड़क डेटा है:"
+              : "This is not a flood verdict. We have road data for these areas:"}</p>
+            <ul className="areas">
+              {(r.coverage ?? []).map((a) => <li key={a.name}>{a.name}</li>)}
+            </ul>
+            <p className="fresh">{L === "hi" ? "पिन इन इलाक़ों के अंदर रखें।" : "Put both pins inside one of these areas."}</p>
+          </section>
+          <div className="actions">
+            {!!r.coverage?.length && (
+              <button className="btn primary grow" onClick={() => p.showCoverage(r.coverage!)}>
+                <Scan size={18} aria-hidden /> {L === "hi" ? "कवर इलाक़े दिखाएँ" : "Show covered areas"}
+              </button>
+            )}
+            <button className="btn ghost" onClick={() => { p.setResult(null); p.setAlt(null, null); p.showCoverage(null); }}>
+              <ArrowLeft size={18} aria-hidden /> {L === "hi" ? "बदलें" : "Change"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {r && sum && !(outside && !r.normal) && (
         <div className="route-result">
           {outside && (
             <div className="coverage" role="note">

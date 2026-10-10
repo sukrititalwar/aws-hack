@@ -327,7 +327,7 @@ class H(BaseHTTPRequestHandler):
             res = routing.plan(g, b["from"], b["to"], b["vehicle"], sp)
             if b.get("compare"):
                 res["compare"] = routing.compare(g, b["from"], b["to"], sp)
-            res["out_of_area"] = max(res["snap_m"]) > 500
+            res["coverage"] = g.areas
             res["checked_at"] = int(now)
             res["spots_considered"] = len(sp)
             return self._send(200, res)
