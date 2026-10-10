@@ -1,3 +1,4 @@
+import { Camera, MessageCircle, TriangleAlert, X } from "lucide-react";
 import maplibregl from "maplibre-gl";
 import { useEffect, useRef, useState } from "react";
 import { api, mapStyle, WHATSAPP_JOIN, WHATSAPP_NUMBER } from "../api";
@@ -108,22 +109,22 @@ export default function ReportFlow(p: Props) {
   return (
     <div className="sheet full" role="dialog" aria-label={t("report", L)}>
       <header className="sheet-head">
-        <h2>📷 {t("report", L)}</h2>
-        <button className="icon-btn" onClick={p.onClose} aria-label={t("close", L)}>✕</button>
+        <h2 className="row gap"><Camera size={22} aria-hidden /> {t("report", L)}</h2>
+        <button className="icon-btn" onClick={p.onClose} aria-label={t("close", L)}><X size={20} /></button>
       </header>
 
       {step === "pick" && (
         <div className="pick">
           <label className="camera">
             <input type="file" accept="image/*,video/*" capture="environment" onChange={(e) => onFile(e.target.files?.[0])} />
-            <span className="camera-icon" aria-hidden>📷</span>
+            <span className="camera-icon" aria-hidden><Camera size={44} strokeWidth={1.5} /></span>
             <span>{t("photoOrVideo", L)}</span>
           </label>
           <p className="muted">{t("photoTip", L)}</p>
           {WHATSAPP_NUMBER && (
             <a className="btn wa big-btn" target="_blank" rel="noreferrer"
               href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(WHATSAPP_JOIN || "hi")}`}>
-              💬 {L === "hi" ? "WhatsApp से रिपोर्ट करें (ऐप की ज़रूरत नहीं)" : "Report on WhatsApp instead (no app needed)"}
+              <MessageCircle size={18} aria-hidden /> {L === "hi" ? "WhatsApp से रिपोर्ट करें (ऐप की ज़रूरत नहीं)" : "Report on WhatsApp instead (no app needed)"}
             </a>
           )}
         </div>
@@ -157,7 +158,7 @@ export default function ReportFlow(p: Props) {
 
       {step === "error" && (
         <div className="error-box" role="alert">
-          <p>⚠️ {error}</p>
+          <p className="row gap"><TriangleAlert size={18} aria-hidden /> {error}</p>
           <button className="btn primary" onClick={() => setStep("pick")}>{L === "hi" ? "फिर से कोशिश करें" : "Try another photo"}</button>
         </div>
       )}

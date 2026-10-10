@@ -1,3 +1,4 @@
+import { CircleHelp, Navigation, Share2, TriangleAlert, Volume2, Zap } from "lucide-react";
 import { depthBand, HAZARD_LABEL, t, vehicleInfo, type Lang } from "../i18n";
 import type { Report, Vehicle, Verdict } from "../types";
 import { speak } from "../util";
@@ -28,7 +29,7 @@ export default function ResultCard({ report: r, vehicle, lang, setLang, onRoute,
 
   return (
     <div className="result">
-      {r.danger && <div className="danger-banner" role="alert">⚡ {t("danger", lang)}</div>}
+      {r.danger && <div className="danger-banner" role="alert"><Zap size={20} aria-hidden /> {t("danger", lang)}</div>}
       {r.source_label === "synthetic" && <div className="chip warn">{t("synthetic", lang)}</div>}
 
       <div className="depthrow">
@@ -47,7 +48,7 @@ export default function ResultCard({ report: r, vehicle, lang, setLang, onRoute,
 
       {inspect && (
         <div className="inspect-banner" role="note">
-          <strong>? {t("inspect", lang)}</strong>
+          <strong className="row gap"><CircleHelp size={18} aria-hidden /> {t("inspect", lang)}</strong>
           <span>{t("inspectWhy", lang)}</span>
           {!!r.inspection_reasons?.length && <span className="small">({r.inspection_reasons.join(", ")})</span>}
         </div>
@@ -86,11 +87,11 @@ export default function ResultCard({ report: r, vehicle, lang, setLang, onRoute,
       )}
 
       <div className="actions">
-        <button className="btn" onClick={() => speak(`${reasoning ?? ""} ${why}`, lang)}>🔊 {t("speak", lang)}</button>
+        <button className="btn" onClick={() => speak(`${reasoning ?? ""} ${why}`, lang)}><Volume2 size={18} aria-hidden /> {t("speak", lang)}</button>
         <a className="btn" href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noreferrer">
-          💬 {t("share", lang)}
+          <Share2 size={18} aria-hidden /> {t("share", lang)}
         </a>
-        {onRoute && <button className="btn primary" onClick={onRoute}>🧭 {t("routeFromHere", lang)}</button>}
+        {onRoute && <button className="btn primary" onClick={onRoute}><Navigation size={18} aria-hidden /> {t("routeFromHere", lang)}</button>}
       </div>
       {r.source_url && (
         <p className="small muted">
@@ -98,7 +99,7 @@ export default function ResultCard({ report: r, vehicle, lang, setLang, onRoute,
         </p>
       )}
       {footer}
-      <p className="disclaimer">⚠️ {t("disclaimer", lang)}</p>
+      <p className="disclaimer"><TriangleAlert size={14} aria-hidden /> {t("disclaimer", lang)}</p>
     </div>
   );
 }

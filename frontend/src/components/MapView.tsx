@@ -23,6 +23,21 @@ interface Props {
 }
 
 const EMPTY: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
+
+// Lucide paths (check, x, cloud-rain, shield, message-circle) as strings, because markers are plain DOM.
+const svg = (body: string, size = 16) =>
+  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+const PIN_GLYPH: Record<string, string> = {
+  go: svg('<path d="M20 6 9 17l-5-5"/>'),
+  nogo: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
+  risky: "!",
+  inspect: "?",
+};
+const BADGE = {
+  rain: svg('<path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/>', 11),
+  official: svg('<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>', 11),
+  social: svg('<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>', 11),
+};
 const dark = () => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
 
 export default function MapView(p: Props) {
@@ -51,14 +66,14 @@ export default function MapView(p: Props) {
       m.addSource("route-safe", { type: "geojson", data: EMPTY });
       m.addSource("route-alt", { type: "geojson", data: EMPTY });
       m.addLayer({ id: "route-normal", type: "line", source: "route-normal",
-        paint: { "line-color": "#7a8796", "line-width": 5, "line-dasharray": [1.5, 1.2], "line-opacity": 0.9 },
+        paint: { "line-color": "#94a3b8", "line-width": 5, "line-dasharray": [1.5, 1.2], "line-opacity": 0.9 },
         layout: { "line-cap": "round" } });
       m.addLayer({ id: "route-safe-casing", type: "line", source: "route-safe",
         paint: { "line-color": "#ffffff", "line-width": 9 }, layout: { "line-cap": "round", "line-join": "round" } });
       m.addLayer({ id: "route-safe", type: "line", source: "route-safe",
-        paint: { "line-color": "#0b6fd6", "line-width": 6 }, layout: { "line-cap": "round", "line-join": "round" } });
+        paint: { "line-color": "#2563eb", "line-width": 6 }, layout: { "line-cap": "round", "line-join": "round" } });
       m.addLayer({ id: "route-alt", type: "line", source: "route-alt",
-        paint: { "line-color": "#13a36b", "line-width": 5, "line-dasharray": [2, 1] }, layout: { "line-cap": "round" } });
+        paint: { "line-color": "#16a34a", "line-width": 5, "line-dasharray": [2, 1] }, layout: { "line-cap": "round" } });
       cb.current.onReady?.(m);
       drawRoute();
       drawAlt();
@@ -85,8 +100,8 @@ export default function MapView(p: Props) {
       const btn = document.createElement("button");
       btn.className = `pin ${ui.cls}${s.faded ? " faded" : ""}${s.danger ? " danger" : ""}${s.predicted ? " predicted" : ""}`;
       btn.style.width = btn.style.height = `${size}px`;
-      const badge = s.predicted ? "🌧" : s.sources.includes("official") ? "🛡" : s.sources.includes("social") ? "💬" : "";
-      btn.innerHTML = `<span>${ui.glyph}</span>${s.reportCount > 1 ? `<b>${s.reportCount}</b>` : ""}${badge ? `<i>${badge}</i>` : ""}`;
+      const badge = s.predicted ? BADGE.rain : s.sources.includes("official") ? BADGE.official : s.sources.includes("social") ? BADGE.social : "";
+      btn.innerHTML = `<span>${unsure ? PIN_GLYPH.inspect : PIN_GLYPH[ui.cls]}</span>${s.reportCount > 1 ? `<b>${s.reportCount}</b>` : ""}${badge ? `<i>${badge}</i>` : ""}`;
       const veh = vehicleInfo(p.vehicle);
       btn.setAttribute("aria-label", `${s.place ?? "Flooded spot"}: ${s.predicted ? "predicted from rain, " : ""}about ${s.depth_high} cm. ${veh.en}: ${ui.en}.`);
       btn.onclick = (e) => {
@@ -145,7 +160,9 @@ export default function MapView(p: Props) {
       const b = new maplibregl.LngLatBounds();
       g.coordinates.forEach((c) => b.extend(c as LonLat));
       r?.normal?.geometry.coordinates.forEach((c) => b.extend(c as LonLat));
-      m.fitBounds(b, { padding: { top: 140, bottom: 260, left: 40, right: 40 }, duration: 700 });
+      // Keep the route clear of the toolbar and of the panel (side panel on desktop, bottom sheet on phones).
+      const wide = window.innerWidth >= 760;
+      m.fitBounds(b, { padding: { top: 130, bottom: wide ? 40 : Math.round(window.innerHeight * 0.6) + 20, left: 40, right: wide ? 440 : 40 }, duration: 700 });
     }
   }
   useEffect(drawRoute, [p.route]);

@@ -139,6 +139,9 @@ export interface RouteResult {
   note: string;
   snap_m: [number, number];
   compare?: CompareRow[];
+  spots_considered?: number;
+  out_of_area?: boolean;
+  checked_at?: number;
 }
 
 export interface DrainRow {

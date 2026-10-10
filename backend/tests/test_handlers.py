@@ -141,3 +141,6 @@ def test_validation(aws):
     from functions.upload_url import app as upload
     assert upload.handler(_event("POST", {"lat": 200, "lon": 72, "deviceId": "x" * 10}), None)["statusCode"] == 400
     assert route.handler(_event("POST", {"from": [72, 19], "to": [72, 19], "vehicle": "tank"}), None)["statusCode"] == 400
+    # a point in another city: plain 400 explaining coverage, not a 500 from the spot lookup
+    r = route.handler(_event("POST", {"from": [77.22, 28.63], "to": [77.59, 12.97], "vehicle": "car", "city": "delhi"}), None)
+    assert r["statusCode"] == 400 and "inside Delhi" in json.loads(r["body"])["error"]

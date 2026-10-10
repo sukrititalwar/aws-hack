@@ -80,6 +80,11 @@ def handler(event, _ctx):
     if city not in config.CITIES or mode not in ("live", "demo"):
         return http.bad("bad city or mode")
     frm, to = [float(x) for x in frm], [float(x) for x in to]
+    # A point in another city (e.g. "my location" while away) would make the flood-spot lookup span
+    # hundreds of km; say so plainly instead of failing.
+    w, s, e, n = config.CITIES[city]["bbox"]
+    if not all(w <= p[0] <= e and s <= p[1] <= n for p in (frm, to)):
+        return http.bad(f"Both points must be inside {config.CITIES[city]['label']}: we only have road and flood data there.")
 
     try:
         graph = load_graph(city)
@@ -101,6 +106,7 @@ def handler(event, _ctx):
         result["compare"] = routing.compare(graph, frm, to, spots)
     result["compute_ms"] = int((time.time() - t0) * 1000)
     result["spots_considered"] = len(spots)
-    if max(result["snap_m"]) > 500:
-        result["note"] = "One of your points is outside the routable demo area. " + result["note"]
+    # Coverage is reported separately from the flood verdict: a far snap means our road graph doesn't cover it.
+    result["out_of_area"] = max(result["snap_m"]) > 500
+    result["checked_at"] = int(now)
     return http.resp(200, result)

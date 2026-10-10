@@ -1,3 +1,4 @@
+import { Ban, Camera, CircleCheck, CloudRain, Navigation, Shield, Sun, TriangleAlert, Waves, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { ago, depthBand, t, type Lang } from "../i18n";
@@ -7,15 +8,16 @@ import ResultCard from "./ResultCard";
 import { BigVerdict, VerdictGrid } from "./Verdicts";
 
 const VERIFY = {
-  predicted: { en: "🌧 Predicted from rain", hi: "🌧 बारिश से अनुमान" },
-  single_report: { en: "📷 AI estimate, 1 report", hi: "📷 AI अनुमान, 1 रिपोर्ट" },
-  confirmed: { en: "✔ Confirmed by several reports", hi: "✔ कई रिपोर्ट से पुष्टि" },
-  official: { en: "🛡 Official source", hi: "🛡 आधिकारिक स्रोत" },
+  predicted: { en: "Predicted from rain", hi: "बारिश से अनुमान", Icon: CloudRain },
+  single_report: { en: "AI estimate, 1 report", hi: "AI अनुमान, 1 रिपोर्ट", Icon: Camera },
+  confirmed: { en: "Confirmed by several reports", hi: "कई रिपोर्ट से पुष्टि", Icon: CircleCheck },
+  official: { en: "Official source", hi: "आधिकारिक स्रोत", Icon: Shield },
 } as const;
 
 function VerifyBadge({ spot, lang }: { spot: Spot; lang: Lang }) {
   const v = spot.verification ?? (spot.predicted ? "predicted" : "single_report");
-  return <span className={`badge ${v}`}>{VERIFY[v][lang]}</span>;
+  const { Icon } = VERIFY[v];
+  return <span className={`badge ${v}`}><Icon size={13} aria-hidden /> {VERIFY[v][lang]}</span>;
 }
 
 interface Props {
@@ -61,15 +63,15 @@ export default function SpotSheet({ spot, mode, known, vehicle, lang, setLang, o
           {spot.predicted ? "" : `${spot.reportCount} ${t("reports", lang)} · ${ago(spot.ageMin * 60, lang)}`}
         </p>
       </div>
-      <button className="icon-btn" onClick={onClose} aria-label={t("close", lang)}>✕</button>
+      <button className="icon-btn" onClick={onClose} aria-label={t("close", lang)}><X size={20} /></button>
     </header>
   );
 
   const votes = (
     <div className="votes">
-      <button className="btn" onClick={() => vote("still_flooded")}>🌊 {t("stillFlooded", lang)}</button>
-      <button className="btn" onClick={() => vote("cleared")}>☀️ {t("cleared", lang)}</button>
-      <button className="btn" onClick={() => vote("wrong")}>🚫 {t("wrong", lang)}</button>
+      <button className="btn" onClick={() => vote("still_flooded")}><Waves size={16} aria-hidden /> {t("stillFlooded", lang)}</button>
+      <button className="btn" onClick={() => vote("cleared")}><Sun size={16} aria-hidden /> {t("cleared", lang)}</button>
+      <button className="btn" onClick={() => vote("wrong")}><Ban size={16} aria-hidden /> {t("wrong", lang)}</button>
       {voteMsg && <p className="small muted" role="status">{voteMsg}</p>}
     </div>
   );
@@ -88,7 +90,7 @@ export default function SpotSheet({ spot, mode, known, vehicle, lang, setLang, o
       <div className="sheet" role="dialog" aria-label="Predicted flooding">
         {header}
         <div className="banner warn">
-          🌧️ {lang === "hi"
+          <CloudRain size={16} aria-hidden /> {lang === "hi"
             ? `पिछले 3 घंटे में ${Math.round(spot.rainPast3h ?? 0)} मिमी बारिश। यह जगह अक्सर भरती है, अभी तक किसी ने रिपोर्ट नहीं किया।`
             : `${Math.round(spot.rainPast3h ?? 0)} mm of rain in the last 3 h. This spot usually floods; nobody has reported it yet.`}
         </div>
@@ -96,8 +98,8 @@ export default function SpotSheet({ spot, mode, known, vehicle, lang, setLang, o
         <BigVerdict verdict={spot.verdicts[vehicle]} vehicle={vehicle} lang={lang} inspect />
         <VerdictGrid verdicts={spot.verdicts} selected={vehicle} lang={lang} inspect />
         {spot.source_url && <p className="small">{lang === "hi" ? "पुराना स्रोत" : "Why this is a known spot"}: <a href={spot.source_url} target="_blank" rel="noreferrer">{new URL(spot.source_url).hostname.replace("www.", "")}</a></p>}
-        <div className="actions"><button className="btn primary" onClick={() => onRoute([spot.lon, spot.lat])}>🧭 {t("routeFromHere", lang)}</button></div>
-        <p className="disclaimer">⚠️ {lang === "hi" ? "यह बारिश से अनुमान है, फ़ोटो से नहीं। वहाँ हों तो फ़ोटो भेजें।" : "This is a prediction from rainfall, not a photo. If you're there, report it with a photo."}</p>
+        <div className="actions"><button className="btn primary" onClick={() => onRoute([spot.lon, spot.lat])}><Navigation size={18} aria-hidden /> {t("routeFromHere", lang)}</button></div>
+        <p className="disclaimer"><TriangleAlert size={14} aria-hidden /> {lang === "hi" ? "यह बारिश से अनुमान है, फ़ोटो से नहीं। वहाँ हों तो फ़ोटो भेजें।" : "This is a prediction from rainfall, not a photo. If you're there, report it with a photo."}</p>
       </div>
     );
   }
@@ -121,7 +123,7 @@ export default function SpotSheet({ spot, mode, known, vehicle, lang, setLang, o
           <BigVerdict verdict={spot.verdicts[vehicle]} vehicle={vehicle} lang={lang} inspect={!!spot.needs_inspection} />
           <VerdictGrid verdicts={spot.verdicts} selected={vehicle} lang={lang} inspect={!!spot.needs_inspection} />
           {mode === "live" && votes}
-          <p className="disclaimer">⚠️ {t("disclaimer", lang)}</p>
+          <p className="disclaimer"><TriangleAlert size={14} aria-hidden /> {t("disclaimer", lang)}</p>
         </>
       )}
     </div>
