@@ -142,7 +142,13 @@ export interface RouteResult {
   spots_considered?: number;
   out_of_area?: boolean;
   checked_at?: number;
+  coverage?: CoverageArea[];
 }
+export interface CoverageArea {
+  name: string;
+  bbox: [number, number, number, number];
+}
+export type Theme = "system" | "light" | "dark";
 
 export interface DrainRow {
   groupId: string;

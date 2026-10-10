@@ -106,7 +106,7 @@ def handler(event, _ctx):
         result["compare"] = routing.compare(graph, frm, to, spots)
     result["compute_ms"] = int((time.time() - t0) * 1000)
     result["spots_considered"] = len(spots)
-    # Coverage is reported separately from the flood verdict: a far snap means our road graph doesn't cover it.
-    result["out_of_area"] = max(result["snap_m"]) > 500
+    # Coverage is reported separately from the flood verdict, with the areas we do cover.
+    result["coverage"] = graph.areas
     result["checked_at"] = int(now)
     return http.resp(200, result)

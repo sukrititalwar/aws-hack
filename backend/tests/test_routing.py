@@ -115,3 +115,31 @@ def test_snapping_avoids_one_way_stubs():
     assert 6 not in g.core("car")
     r = routing.plan(g, NODES[0], nodes[6], "car", [])   # destination tapped on the stub
     assert r["normal"] is not None and r["snap_m"][1] < 30
+
+
+def test_far_taps_are_out_of_area_not_same_place():
+    # Two taps ~10 km north of the graph both snap to the same edge node; that is a coverage
+    # limit, never "start and destination are the same place".
+    far_a, far_b = [72.85, 19.20], [72.86, 19.21]
+    r = routing.plan(graph(), far_a, far_b, "scooter", [])
+    assert r["out_of_area"] and r["normal"] is None and "same place" not in r["note"]
+    assert routing.compare(graph(), far_a, far_b, []) == []
+
+
+def test_two_separate_areas_both_routable():
+    # A second, disconnected area (shifted 0.1 deg) is kept, and routing within it works,
+    # while a trip between the two areas is reported as a coverage gap.
+    n = len(NODES)
+    nodes = NODES + [[x + 0.1, y] for x, y in NODES]
+    edges = EDGES + [[u + n, v + n, length, cls, flags, None] for u, v, length, cls, flags, _ in EDGES]
+    # pad both areas past MIN_AREA_NODES with a chain of two-way galis
+    for base in (0, n):
+        prev = base
+        for i in range(routing.MIN_AREA_NODES):
+            nodes.append([NODES[0][0] + (0.1 if base else 0) - 0.0005 * (i + 1), NODES[0][1]])
+            edges.append([prev, len(nodes) - 1, 50, 3, 0, None])
+            prev = len(nodes) - 1
+    g = routing.Graph({"nodes": nodes, "edges": edges})
+    assert routing.plan(g, nodes[n], nodes[n + 2], "car", [])["normal"] is not None
+    cross = routing.plan(g, NODES[0], nodes[n + 2], "car", [])
+    assert cross["out_of_area"] and cross["normal"] is None

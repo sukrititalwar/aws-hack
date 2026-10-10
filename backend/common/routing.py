@@ -33,14 +33,21 @@ ACCESS = {
 COMPARE_VEHICLES = ["scooter", "auto", "car", "suv", "bus"]
 
 GRID = 0.001  # ~100 m grid for the edge spatial index
+# A graph can cover several separate areas of a city (e.g. central and north-west Delhi). Each area's
+# road network is its own big component; tiny islands (one-way stubs, gated lanes) are still dropped.
+MIN_AREA_NODES = 50
+OUT_OF_AREA_M = 500  # a tap further than this from any usable road is outside our coverage
 
 
 class Graph:
     def __init__(self, data: dict):
         self.nodes = data["nodes"]
         self.edges = data["edges"]
+        # [{"name": ..., "bbox": [w, s, e, n]}]: what we have road data for, shown to the user
+        self.areas = data.get("areas") or ([{"name": data.get("city", ""), "bbox": data["bbox"]}] if data.get("bbox") else [])
         self._adj_cache: dict = {}
         self._core_cache: dict = {}
+        self._comp_cache: dict = {}
         self._grid: dict = {}
         for i, e in enumerate(self.edges):
             for cell in self._cells_for(self.geometry(i)):
@@ -85,8 +92,8 @@ class Graph:
         return self._adj_cache[key]
 
     def core(self, vehicle: str) -> set[int]:
-        """Largest strongly connected component for this vehicle's profile, so a start/end point is
-        never snapped onto a one-way stub that has no way in or out."""
+        """Nodes of the big strongly connected components for this vehicle's profile (one per covered
+        area), so a start/end point is never snapped onto a one-way stub with no way in or out."""
         adj = self.adjacency(vehicle)
         key = id(adj)
         if key in self._core_cache:
@@ -111,7 +118,7 @@ class Graph:
         for u, outs in adj.items():
             for v, _, _ in outs:
                 radj.setdefault(v, []).append(u)
-        comp_of, best = {}, set()
+        comp_of, comps = {}, []
         for root in reversed(order):
             if root in comp_of:
                 continue
@@ -124,10 +131,19 @@ class Graph:
                         comp_of[w] = root
                         comp.add(w)
                         stack.append(w)
-            if len(comp) > len(best):
-                best = comp
-        self._core_cache[key] = best
-        return best
+            comps.append(comp)
+        largest = max((len(c) for c in comps), default=0)
+        keep = [c for c in comps if len(c) == largest or (len(c) >= MIN_AREA_NODES and len(c) >= largest * 0.05)]
+        core = set().union(*keep) if keep else set()
+        self._core_cache[key] = core
+        self._comp_cache[key] = {n: i for i, c in enumerate(keep) for n in c}
+        return core
+
+    def same_area(self, a: int, b: int, vehicle: str) -> bool:
+        """Both nodes in the same covered road network (a route between them can exist)."""
+        self.core(vehicle)
+        comp = self._comp_cache[id(self.adjacency(vehicle))]
+        return comp.get(a) == comp.get(b)
 
     def nearest_node(self, lon, lat, vehicle: str) -> tuple[int, float]:
         k = math.cos(math.radians(lat))
@@ -233,7 +249,17 @@ def plan(graph: Graph, frm, to, vehicle: str, spots: list[dict]) -> dict:
         }
 
     out = {"vehicle": vehicle, "snap_m": [round(d_src), round(d_dst)], "normal": None, "safe": None,
-           "avoided_spots": [], "extra_min": 0, "note": ""}
+           "avoided_spots": [], "extra_min": 0, "note": "", "out_of_area": False}
+    # Coverage first: two far-away taps snap to the same edge node, which is NOT "the same place".
+    # Measured to ANY road (pedestrian profile): a bus stop 600 m from campus is still covered.
+    if max(graph.nearest_node(*frm, "pedestrian")[1], graph.nearest_node(*to, "pedestrian")[1]) > OUT_OF_AREA_M:
+        out["out_of_area"] = True
+        out["note"] = "This trip is outside the area we have road data for."
+        return out
+    if not graph.same_area(src, dst, vehicle):
+        out["out_of_area"] = True
+        out["note"] = "Start and destination are in different areas we cover; we can't route between them yet."
+        return out
     if src == dst:
         out["note"] = "Start and destination are the same place."
         return out
@@ -285,6 +311,8 @@ def compare(graph: Graph, frm, to, spots: list[dict], vehicles=COMPARE_VEHICLES)
             r = plan(graph, frm, to, v, spots)
         except ValueError:
             continue
+        if r["out_of_area"]:
+            return []  # a coverage problem, not a per-vehicle verdict
         if not r["normal"]:
             out.append({"vehicle": v, "status": "stuck", "usual_km": 0, "usual_min": 0, "safe_km": None,
                         "safe_min": None, "extra_min": 0, "blocking": [], "risky": [], "note": r["note"],
