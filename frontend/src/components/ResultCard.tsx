@@ -1,5 +1,5 @@
 import { CircleHelp, Navigation, Share2, TriangleAlert, Volume2, Zap } from "lucide-react";
-import { depthBand, HAZARD_LABEL, t, vehicleInfo, type Lang } from "../i18n";
+import { depthBand, EV_SCOOTER_WARNING_CM, HAZARD_LABEL, t, vehicleInfo, type Lang } from "../i18n";
 import type { Report, Vehicle, Verdict } from "../types";
 import { speak } from "../util";
 import { BigVerdict, VerdictGrid } from "./Verdicts";
@@ -30,6 +30,9 @@ export default function ResultCard({ report: r, vehicle, lang, setLang, onRoute,
   return (
     <div className="result">
       {r.danger && <div className="danger-banner" role="alert"><Zap size={20} aria-hidden /> {t("danger", lang)}</div>}
+      {vehicle === "ev_scooter" && (r.depth_high ?? 0) >= EV_SCOOTER_WARNING_CM && (
+        <div className="ev-banner" role="alert"><TriangleAlert size={18} aria-hidden /> {t("evDepthWarning", lang)}</div>
+      )}
       {r.source_label === "synthetic" && <div className="chip warn">{t("synthetic", lang)}</div>}
 
       <div className="depthrow">

@@ -127,6 +127,11 @@ def test_full_flow(aws, monkeypatch):
     res_suv = json.loads(route.handler(_event("POST /route", {"from": NODES[0], "to": NODES[2],
                                                               "vehicle": "suv", "city": "mumbai"}), None)["body"])
     assert res_suv["safe"] is not None
+    res_ev = json.loads(route.handler(_event("POST /route", {"from": NODES[0], "to": NODES[2],
+                                                             "vehicle": "ev_scooter", "city": "mumbai",
+                                                             "compare": True}), None)["body"])
+    assert res_ev["vehicle"] == "ev_scooter"
+    assert "ev_scooter" in {row["vehicle"] for row in res_ev["compare"]}
 
 
 def test_rate_limit(aws):

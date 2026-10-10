@@ -24,13 +24,14 @@ ACCESS = {
     "pedestrian": ({1, 2, 3, 4, 5}, False),
     "bicycle": ({1, 2, 3, 4, 5}, True),
     "scooter": ({1, 2, 3, 4}, True),
+    "ev_scooter": ({1, 2, 3, 4}, True),
     "auto": ({1, 2, 3, 4}, True),
     "car": ({0, 1, 2, 3}, True),
     "suv": ({0, 1, 2, 3, 4}, True),
     "bus": ({0, 1, 2}, True),
     "ambulance": ({0, 1, 2, 3}, True),
 }
-COMPARE_VEHICLES = ["scooter", "auto", "car", "suv", "bus"]
+COMPARE_VEHICLES = ["scooter", "ev_scooter", "auto", "car", "suv", "bus"]
 
 GRID = 0.001  # ~100 m grid for the edge spatial index
 # A graph can cover several separate areas of a city (e.g. central and north-west Delhi). Each area's

@@ -10,13 +10,13 @@ At the edge of a waterlogged road, people ask one question: *"Can MY vehicle cro
 ## What it does
 | | |
 |---|---|
-| 📷 **Photo → verdict** | Amazon Bedrock (Claude vision) estimates depth from kerbs, tyres and legs. A deterministic, unit-tested rules engine (not the AI) gives GO / RISKY / NO-GO for walking, cycle, scooter, auto, car, SUV, bus and ambulance. |
+| 📷 **Photo → verdict** | Amazon Bedrock (Claude vision) estimates depth from kerbs, tyres and legs. A deterministic, unit-tested rules engine (not the AI) gives GO / RISKY / NO-GO for walking, cycle, petrol scooter, EV scooter, auto, car, SUV, bus and ambulance. |
 | 💬 **WhatsApp reporting** | Send a photo + location to the WhatsApp number and get the verdict back on WhatsApp, no app needed. Send a location for nearby flooded spots, or a place name ("Minto Bridge") for its status. Twilio sandbox, or AWS End User Messaging Social. |
 | 🌧 **Real-time rain** | Every 15 min, live rainfall at every chronic hotspot (Open-Meteo). Heavy rain turns a hotspot into a **predicted** spot (low confidence, so verdicts are stricter) until a real report confirms or replaces it, and sends SNS alerts. |
 | 📰 **Social media + news** | Every 10 min, Google News, Bluesky and Mastodon (no keys), plus Reddit, X and YouTube if keys are set. Bedrock extracts place, depth words and closures. Amazon Location geocodes. Official closures = NO-GO for all. |
 | ✅ **Ground truth** | Chronic hotspots for Delhi, Gurugram and Kochi, each **cited to a news report** and **position-checked against OpenStreetMap** (`data/hotspots_*.geojson`). Every spot shows its level: 🌧 predicted → 📷 AI estimate → ✔ confirmed by several reports → 🛡 official. |
 | 🕳️ **DrainReady** | Residents photograph a blocked drain. Bedrock classifies it as clear / partly / fully blocked. Duplicates within 30 m are grouped. Blockages are ranked by severity × number of reporters × 24 h rain forecast × nearness to a known flood spot. A dispatcher assigns a worker, and a drain is only marked cleared when the **after-photo itself shows a clear drain**. Impact: cleared before rain, median hours to clear, repeat blockages. |
-| 🧭 **Safe route + "who can still go?"** | One trip, five vehicles. *"Scooter must detour (+2 min), car can take the usual road slowly, bus OK."* Tap a vehicle to see its route. Lanes included; buses stay on bus-capable roads. |
+| 🧭 **Safe route + "who can still go?"** | One trip, six vehicle profiles, including separate petrol and EV scooters. *"Scooter must detour (+2 min), car can take the usual road slowly, bus OK."* Tap a vehicle to see its route. Lanes included; buses stay on bus-capable roads. |
 | 🚌 **Buses** | Bus routes passing a flooded spot (likely diverted), and stops that are unsafe to walk to. From the official GTFS (Delhi DTC/cluster) or OSM. |
 
 ## Architecture
@@ -52,7 +52,8 @@ flowchart LR
 | Vehicle | GO if < | RISKY | NO-GO if ≥ |
 |---|---|---|---|
 | Pedestrian | 10 | 10–30 | 30 |
-| Bicycle / Scooter | 10 | 10–20 | 20 |
+| Bicycle / Petrol scooter | 10 | 10–20 | 20 |
+| EV Scooter | 12 | 12–16 | 16 |
 | Auto | 15 | 15–25 | 25 |
 | Car | 15 | 15–30 | 30 |
 | SUV | 25 | 25–45 | 45 |
@@ -60,6 +61,8 @@ flowchart LR
 | Ambulance | 20 | 20–35 | 35 |
 
 Each of these worsens every verdict by one level: low confidence or poor photo · flowing water · strong current / open drain / wire in water. A wire in the water means NO-GO for everyone. Rain thresholds: ≥20 mm in 3 h or ≥7.5 mm/h → "flooding likely now". ≥15 mm forecast in the next 3 h → warning.
+
+The EV Scooter depths are configurable app-level caution thresholds, not ground-clearance or water-ingress specifications for every model. They do not predict battery damage, and a depth below the caution threshold is not a safety guarantee. Photo-based depth estimates are uncertain; avoid crossing if unsure.
 
 ## Routing data
 | City | Area | Nodes | Edges (galis) | Size |
