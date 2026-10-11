@@ -8,6 +8,7 @@ Uses the REAL rules, spot merging, predicted-spot and routing code on the real g
 Photo analysis returns a canned MOCK result unless --bedrock (real Bedrock with your AWS creds).
 
   python scripts/local_api.py [--social] [--bedrock]      # http://localhost:8787
+  (also serves POST /predictive-route; set VITE_PREDICTIVE_ROUTE_ENABLED=true in frontend/.env.local to see it)
 """
 import argparse
 import gzip
@@ -26,8 +27,10 @@ from urllib.parse import parse_qs, urlparse
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.join(ROOT, "backend"))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
-from common import bus, config, depth, drains, pipeline, routing, simulation, social, spots  # noqa: E402
+from common import bus, config, db, depth, drains, pipeline, routing, simulation, social, spots  # noqa: E402
 from functions.insights import app as insights  # noqa: E402
+from functions.predictive_route import app as predictive_route  # noqa: E402
+from functions.route import app as route_app  # noqa: E402
 from functions.risk_scheduler.app import fetch_rain, risk_of  # noqa: E402
 
 REPORTS: dict[str, dict] = {}
@@ -249,6 +252,19 @@ class H(BaseHTTPRequestHandler):
         raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
         if u.path.startswith("/me"):
             return self._me("POST", u.path, raw)
+        if u.path == "/predictive-route":      # the same Lambda handler, with DynamoDB swapped for the in-memory data
+            b = json.loads(raw)
+            city = str(b.get("city") or "delhi").lower()
+            g = graph(city)
+            if g:
+                route_app._GRAPHS[city] = g
+            with LOCK:
+                reports = [dict(r) for r in REPORTS.values() if r["city"] == city and r["mode"] == "live"]
+            db.query_bbox = lambda c, mode, bbox, t0, t1: [r for r in reports if bbox[0] <= r["lon"] <= bbox[2] and bbox[1] <= r["lat"] <= bbox[3]]
+            db.hotspots = lambda c: HOTSPOTS.get(c, [])
+            db.active_spots = lambda c, mode, bbox, now=None, predicted=True, report_items=None, hotspot_items=None: city_spots(c, mode, now or time.time(), predicted)
+            r = predictive_route.handler({"routeKey": "POST /predictive-route", "body": json.dumps(b)}, None)
+            return self._send(r["statusCode"], r["body"].encode())
         if u.path == "/drains/upload-url":
             b = json.loads(raw)
             rid = uuid.uuid4().hex[:16]
