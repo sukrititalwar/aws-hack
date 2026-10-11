@@ -5,7 +5,7 @@ Environmental Hacks 2026 (WeMakeDevs × AWS) · Track 02: Heat and Water · Regi
 
 At the edge of a waterlogged road, people ask one question: *"Can MY vehicle cross this?"* Navigation apps don't know the depth, and know nothing about inner lanes (galis). Scooters are the most common vehicle in Indian cities and the most likely to stall.
 
-**➡️ Deploying or picking this up? Start with [DEPLOY.md](DEPLOY.md).**
+**➡️ Deploying or picking this up? Start with [DEPLOY.md](DEPLOY.md).** What is live on AWS right now: [DEPLOYMENT_STATUS.md](DEPLOYMENT_STATUS.md).
 
 ## What it does
 | | |
