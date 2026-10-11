@@ -1,6 +1,6 @@
-import { ArrowLeft, Bell, Info, LocateFixed, MapPinned, MapPinOff, Scan, Navigation, OctagonX, Route as RouteIcon, Share2, ShieldQuestion, Star, TriangleAlert, UserRound, X } from "lucide-react";
-import { useEffect, useState } from "react";
-import { api, geocode, hasLocationKey, PREDICTIVE_ROUTE_ENABLED } from "../api";
+import { ArrowLeft, ArrowUpDown, Bell, Info, LocateFixed, MapPinned, MapPinOff, Scan, Navigation, OctagonX, Route as RouteIcon, Share2, ShieldQuestion, Star, TriangleAlert, UserRound, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { api, geocode, PREDICTIVE_ROUTE_ENABLED } from "../api";
 import { authEnabled, useAuth } from "../auth";
 import { usePlaces } from "../places";
 import { KIND_ICON } from "./AccountSheet";
@@ -163,33 +163,57 @@ function SavedChips({ value, set, lang, onSignIn }: { value: LonLat | null; set:
   );
 }
 
-function PlaceField({ field, value, label, p }: { field: Field; value: LonLat | null; label: string; p: Props }) {
-  const [q, setQ] = useState("");
+function PlaceField({ field, value, label, text, setText, p }: { field: Field; value: LonLat | null; label: string; text: string; setText: (s: string) => void; p: Props }) {
   const [hits, setHits] = useState<{ title: string; pos: LonLat }[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [typed, setTyped] = useState(false);
   const set = field === "from" ? p.setFrom : p.setTo;
+  const seq = useRef(0);
+
+  // type-ahead: search 450 ms after the last keystroke (one request at a time, stale answers dropped)
+  useEffect(() => {
+    if (!typed) return;
+    const q = text.trim();
+    if (q.length < 3) { setHits([]); return; }
+    const id = setTimeout(async () => {
+      const mine = ++seq.current;
+      setBusy(true);
+      const r = await geocode(q, p.center);
+      if (mine === seq.current) { setHits(r); setBusy(false); }
+    }, 450);
+    return () => clearTimeout(id);
+  }, [text, typed]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function choose(h: { title: string; pos: LonLat }) {
+    seq.current++;
+    set(h.pos); setHits([]); setTyped(false); setText(h.title.split(",").slice(0, 2).join(","));
+  }
+  function useMyLocation() {
+    setText(t("locating", p.lang)); setTyped(false); setHits([]);
+    getPosition().then((pos) => { set(pos); setText(t("yourLocation", p.lang)); })
+      .catch(() => { setText(""); alert(p.lang === "hi" ? "आपकी जगह नहीं मिली। लोकेशन की अनुमति दें या मैप पर टैप करें।" : "Location not available. Allow location access, or tap the map."); });
+  }
   return (
     <div className="placefield">
-      <label className="field-label">{label}</label>
+      <label className="field-label" htmlFor={`pf-${field}`}>{label}</label>
       <div className="row">
         <span className={`endpoint inline ${field}`}>{field === "from" ? "A" : "B"}</span>
-        {hasLocationKey ? (
-          <input className="input" placeholder={value ? fmt(value) : t("search", p.lang)} value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={async (e) => { if (e.key === "Enter" && q.trim()) setHits(await geocode(q, p.center)); }} />
-        ) : (
-          <span className="input readonly">{value ? fmt(value) : "—"}</span>
-        )}
+        <input id={`pf-${field}`} className="input" placeholder={field === "from" ? t("yourLocation", p.lang) : t("search", p.lang)} value={text} autoComplete="off"
+          enterKeyHint="search" onFocus={(e) => e.currentTarget.select()}
+          onChange={(e) => { setText(e.target.value); setTyped(true); }}
+          onKeyDown={async (e) => { if (e.key === "Enter" && text.trim()) { setTyped(false); setBusy(true); setHits(await geocode(text.trim(), p.center)); setBusy(false); } }} />
       </div>
-      {hits.length > 0 && (
-        <ul className="hits">
+      {(hits.length > 0 || busy) && (
+        <ul className="hits" role="listbox">
+          {busy && hits.length === 0 && <li className="muted small">{p.lang === "hi" ? "खोज रहे हैं…" : "Searching…"}</li>}
           {hits.map((h) => (
-            <li key={h.title}><button className="link" onClick={() => { set(h.pos); setHits([]); setQ(h.title); }}>{h.title}</button></li>
+            <li key={h.title + h.pos[0]}><button className="link" role="option" onClick={() => choose(h)}><MapPinned size={14} aria-hidden /> {h.title}</button></li>
           ))}
         </ul>
       )}
       <div className="row gap chips">
         {field === "from" && (
-          <button className="chip" onClick={() => getPosition().then(set).catch(() => alert("Location not available"))}>
+          <button className="chip" onClick={useMyLocation}>
             <LocateFixed size={16} aria-hidden /> {t("myLocation", p.lang)}
           </button>
         )}
@@ -197,7 +221,7 @@ function PlaceField({ field, value, label, p }: { field: Field; value: LonLat | 
           <MapPinned size={16} aria-hidden /> {t("tapMap", p.lang)}
         </button>
       </div>
-      <SavedChips value={value} set={set} lang={p.lang} onSignIn={p.onSignIn} />
+      <SavedChips value={value} set={(pt) => { set(pt); setText(""); }} lang={p.lang} onSignIn={p.onSignIn} />
     </div>
   );
 }
@@ -211,9 +235,36 @@ export default function RoutePanel(p: Props) {
   const [prediction, setPrediction] = useState<PredictiveRouteResult | null>(null);
   const [predictionBusy, setPredictionBusy] = useState(false);
   const [predictionErr, setPredictionErr] = useState("");
+  const [fromText, setFromText] = useState("");
+  const [toText, setToText] = useState("");
   const L = p.lang;
   const veh = vehicleInfo(p.vehicle);
   const r = p.result;
+  const ran = useRef("");
+
+  // Like Google Maps: the start is your current location unless you pick another one.
+  useEffect(() => {
+    if (p.from) return;
+    setFromText(t("locating", L));
+    getPosition().then((pos) => { p.setFrom(pos); setFromText(t("yourLocation", L)); }).catch(() => setFromText(""));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // a point chosen on the map or from saved places has no name yet
+  useEffect(() => { if (p.from && !fromText) setFromText(t("droppedPin", L)); }, [p.from]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (p.to && !toText) setToText(t("droppedPin", L)); }, [p.to]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ...and the route is worked out as soon as both ends are known, no extra button press
+  useEffect(() => {
+    if (!p.from || !p.to || p.picking || p.result) return;
+    const key = `${p.from}|${p.to}|${p.vehicle}|${p.mode}`;
+    if (ran.current === key) return;
+    ran.current = key;
+    go();
+  }, [p.from, p.to, p.vehicle, p.mode, p.picking, p.result]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function swap() {
+    const [f, t2, ft, tt] = [p.from, p.to, fromText, toText];
+    p.setFrom(t2); p.setTo(f); setFromText(tt); setToText(ft);
+  }
 
   useEffect(() => {
     setPrediction(null);
@@ -302,8 +353,11 @@ export default function RoutePanel(p: Props) {
 
       {!r && (
         <>
-          <PlaceField field="from" value={p.from} label={t("from", L)} p={p} />
-          <PlaceField field="to" value={p.to} label={t("to", L)} p={p} />
+          <PlaceField field="from" value={p.from} label={t("from", L)} text={fromText} setText={setFromText} p={p} />
+          <button className="btn ghost swapbtn" onClick={swap} disabled={!p.from && !p.to} aria-label={t("swap", L)} title={t("swap", L)}>
+            <ArrowUpDown size={16} aria-hidden /> {t("swap", L)}
+          </button>
+          <PlaceField field="to" value={p.to} label={t("to", L)} text={toText} setText={setToText} p={p} />
           <button className="btn primary big-btn" disabled={!p.from || !p.to || busy} onClick={go}>
             <Navigation size={18} aria-hidden /> {busy ? (L === "hi" ? "खोज रहे हैं…" : "Checking route…") : t("findRoute", L)}
           </button>

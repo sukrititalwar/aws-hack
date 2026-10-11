@@ -609,3 +609,8 @@ html[data-theme="dark"] .simtag { color: #1a0b33; }
   .toolbar .citysel { max-width: 66px; }
   .toolbar .seg button { padding: 5px 4px; font-size: 0.8rem; }
 }
+
+/* route start, Google-Maps style */
+.swapbtn { margin: 2px 0 6px 32px; padding: 4px 10px; font-size: 0.8rem; }
+.hits button { display: flex; align-items: flex-start; gap: 6px; text-align: left; width: 100%; }
+.hits button svg { flex: none; margin-top: 3px; }

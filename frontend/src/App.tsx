@@ -18,7 +18,7 @@ import type { CompareRow, CoverageArea, Hotspot, LonLat, Mode, RainCity, RainInd
 
 const NO_REPORTS = new Map<string, Report>();   // spot details come from the spot itself
 const INDIA_BOUNDS: [number, number, number, number] = [68.2, 6.0, 97.6, 35.8];
-import { getPosition, store, stored } from "./util";
+import { store, stored } from "./util";
 
 type Panel = { kind: "none" } | { kind: "report" } | { kind: "route" } | { kind: "spot"; spot: Spot } | { kind: "hotspot"; h: Hotspot } | { kind: "bus" } | { kind: "drains" } | { kind: "account" } | { kind: "rain" } | { kind: "sim" };
 
@@ -225,7 +225,6 @@ export default function App() {
   function openRoute(dest?: LonLat) {
     setRoute(null);
     if (dest) setTo(dest);
-    if (!from) getPosition().then(setFrom).catch(() => undefined);
     setPanel({ kind: "route" });
   }
 

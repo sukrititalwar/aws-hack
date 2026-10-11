@@ -174,7 +174,7 @@ export function mapStyle(dark: boolean): string | StyleSpecification {
 
 /** Amazon Location Places v2 geocode, biased to a position. */
 export async function geocode(text: string, bias: LonLat): Promise<{ title: string; pos: LonLat }[]> {
-  if (!LOC_KEY) return [];
+  if (!LOC_KEY) return nominatim(text, bias);
   const r = await fetch(`https://places.geo.${LOC_REGION}.amazonaws.com/v2/geocode?key=${LOC_KEY}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -183,4 +183,19 @@ export async function geocode(text: string, bias: LonLat): Promise<{ title: stri
   if (!r.ok) return [];
   const data = await r.json();
   return (data.ResultItems ?? []).map((i: { Title: string; Position: LonLat }) => ({ title: i.Title, pos: i.Position }));
+}
+
+/** Free place search (OpenStreetMap Nominatim) used when no Amazon Location key is set. Light use only: callers debounce. */
+async function nominatim(text: string, bias: LonLat): Promise<{ title: string; pos: LonLat }[]> {
+  const d = 0.6;
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=in&q=${encodeURIComponent(text)}`
+    + `&viewbox=${bias[0] - d},${bias[1] + d},${bias[0] + d},${bias[1] - d}`;
+  try {
+    const r = await fetch(url, { headers: { "Accept-Language": "en" } });
+    if (!r.ok) return [];
+    const rows = (await r.json()) as { display_name: string; lon: string; lat: string }[];
+    return rows.map((i) => ({ title: i.display_name, pos: [Number(i.lon), Number(i.lat)] as LonLat }));
+  } catch {
+    return [];
+  }
 }
