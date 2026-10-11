@@ -5,7 +5,6 @@ import { VEHICLES } from "../i18n";
 
 const S = {
   title: { en: "Delhi storm (demo)", hi: "दिल्ली का तूफ़ान (डेमो)" },
-  thisIs: { en: "This is a demo", hi: "यह एक डेमो है" },
   rain: { en: "Rain", hi: "बारिश" },
   now: { en: "now", hi: "अभी" },
   next3: { en: "next 3 h", hi: "अगले 3 घं" },
@@ -43,7 +42,6 @@ export default function SimPanel({ lang, data, vehicle, at, onClose }: Props) {
         </div>
         <button className="icon-btn" onClick={onClose} aria-label={t("close", lang)}><X size={20} /></button>
       </header>
-      <p className="simwarn" role="note"><strong>{s("thisIs", lang)}.</strong> {data?.disclaimer ?? "DEMO: every value here is made up for demonstration. These are not real reports."}</p>
       {data && (
         <>
           <p className="muted small">{data.scenario.area}</p>

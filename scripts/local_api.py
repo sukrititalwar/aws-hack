@@ -216,6 +216,13 @@ class H(BaseHTTPRequestHandler):
             now = float(q.get("at") or time.time())
             routes = bus_routes(city)
             return self._send(200, {"routes_known": len(routes), "affected": bus.impact(routes, spots_for(city, q.get("mode", "live"), now))})
+        if u.path == "/drains":
+            rows = drains.build_groups([r for r in DRAINS.values() if r["city"] == city], drain_hotspots(city))
+            if q.get("status") != "all":
+                rows = [r for r in rows if r["status"] != "cleared"]
+            return self._send(200, {"drains": rows, "now": int(time.time())})
+        if u.path == "/drains/metrics":
+            return self._send(200, drains.metrics([r for r in DRAINS.values() if r["city"] == city], time.time()))
         m = re.fullmatch(r"/drains/([\w-]+)", u.path)
         if m and m.group(1) in DRAINS:
             head = DRAINS[m.group(1)]
