@@ -144,3 +144,53 @@ export function fmtTime(epoch: number) {
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Initial bearing between two [lon, lat] points in degrees (0-360). */
+export function calculateBearing(start: [number, number], end: [number, number]): number {
+  const [lon1, lat1] = [start[0] * Math.PI / 180, start[1] * Math.PI / 180];
+  const [lon2, lat2] = [end[0] * Math.PI / 180, end[1] * Math.PI / 180];
+  const dLon = lon2 - lon1;
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  const brng = Math.atan2(y, x) * 180 / Math.PI;
+  return (brng + 360) % 360;
+}
+
+/** Calculate total cumulative length of a polyline in meters. */
+export function polylineTotalMeters(coords: [number, number][]): number {
+  if (coords.length < 2) return 0;
+  let total = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    total += haversineMeters(coords[i], coords[i + 1]);
+  }
+  return total;
+}
+
+/** Interpolate position, bearing, and segment index at target distance along polyline. */
+export function interpolatePolyline(
+  coords: [number, number][],
+  targetMeters: number,
+): { pos: [number, number]; heading: number; segmentIndex: number } {
+  if (coords.length === 0) return { pos: [0, 0], heading: 0, segmentIndex: 0 };
+  if (coords.length === 1 || targetMeters <= 0) {
+    const heading = coords.length > 1 ? calculateBearing(coords[0], coords[1]) : 0;
+    return { pos: coords[0], heading, segmentIndex: 0 };
+  }
+
+  let covered = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const segDist = haversineMeters(coords[i], coords[i + 1]);
+    if (covered + segDist >= targetMeters) {
+      const frac = segDist > 0 ? (targetMeters - covered) / segDist : 0;
+      const lon = coords[i][0] + (coords[i + 1][0] - coords[i][0]) * frac;
+      const lat = coords[i][1] + (coords[i + 1][1] - coords[i][1]) * frac;
+      const heading = calculateBearing(coords[i], coords[i + 1]);
+      return { pos: [lon, lat], heading, segmentIndex: i };
+    }
+    covered += segDist;
+  }
+
+  const last = coords[coords.length - 1];
+  const prev = coords[coords.length - 2] ?? last;
+  return { pos: last, heading: calculateBearing(prev, last), segmentIndex: coords.length - 2 };
+}

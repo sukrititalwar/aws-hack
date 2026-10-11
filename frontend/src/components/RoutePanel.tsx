@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowUpDown, Bell, ChevronDown, ChevronUp, Info, LocateFixed, MapPinned, MapPinOff, Scan, Navigation, OctagonX, Route as RouteIcon, Share2, ShieldQuestion, Star, Target, TriangleAlert, UserRound, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowLeft, ArrowUp, ArrowUpDown, Bell, ChevronDown, ChevronUp, CornerUpLeft, CornerUpRight, Info, LocateFixed, MapPinned, MapPinOff, Navigation, OctagonX, Pause, Play, RotateCcw, Route as RouteIcon, Scan, Share2, ShieldQuestion, Star, Target, TriangleAlert, UserRound, Volume2, VolumeX, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, geocode, PREDICTIVE_ROUTE_ENABLED } from "../api";
 import { authEnabled, useAuth } from "../auth";
@@ -7,7 +7,7 @@ import { KIND_ICON } from "./AccountSheet";
 import { PREDICTIVE_UI, predictiveReason, t, VERDICT_UI, vehicleInfo, type Lang } from "../i18n";
 import { VehicleIcon, VerdictIcon } from "../icons";
 import type { CompareRow, CoverageArea, LonLat, Mode, PlaceKind, PredictiveRiskLevel, PredictiveRouteResult, RouteResult, Vehicle } from "../types";
-import { getPosition, haversineMeters, speak, type UserLocation } from "../util";
+import { calculateBearing, getPosition, haversineMeters, interpolatePolyline, polylineTotalMeters, speak, type UserLocation } from "../util";
 
 export const DELHI_COVERAGE_AREAS: CoverageArea[] = [
   { name: "Central Delhi: Minto Bridge, ITO, Pragati Maidan, Moolchand", bbox: [77.195, 28.555, 77.265, 28.645] },
@@ -57,6 +57,7 @@ interface Props {
   showCoverage: (areas: CoverageArea[] | null) => void;
   coverage?: CoverageArea[] | null;
   userLocation?: UserLocation | null;
+  setUserLocation?: (loc: UserLocation | null) => void;
   navigating?: boolean;
   setNavigating?: (b: boolean) => void;
   followUser?: boolean;
@@ -281,6 +282,64 @@ function DelhiCoverageCard({ lang, showCoverage, coverageActive }: { lang: Lang;
   );
 }
 
+interface TurnInfo {
+  type: "straight" | "right" | "left" | "destination";
+  distanceMeters: number;
+  instruction: string;
+}
+
+function getNextTurn(coords: LonLat[], currentDistMeters: number, lang: Lang, destName?: string): TurnInfo {
+  const total = polylineTotalMeters(coords);
+  const remaining = Math.max(0, total - currentDistMeters);
+  if (remaining <= 35) {
+    return {
+      type: "destination",
+      distanceMeters: Math.round(remaining),
+      instruction: lang === "hi" ? "मंज़िल आ गई है" : (destName ? `Arriving at ${destName}` : "Arriving at destination"),
+    };
+  }
+
+  let covered = 0;
+  let currIdx = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const d = haversineMeters(coords[i], coords[i + 1]);
+    if (covered + d >= currentDistMeters) {
+      currIdx = i;
+      break;
+    }
+    covered += d;
+  }
+
+  const currentBearing = calculateBearing(coords[currIdx], coords[currIdx + 1]);
+  let distToNextTurn = 0;
+  for (let i = currIdx + 1; i < coords.length - 1; i++) {
+    distToNextTurn += haversineMeters(coords[i - 1], coords[i]);
+    const nextBearing = calculateBearing(coords[i], coords[i + 1]);
+    const diff = (nextBearing - currentBearing + 540) % 360 - 180;
+
+    if (Math.abs(diff) >= 28) {
+      const isRight = diff > 0;
+      const turnName = isRight ? (lang === "hi" ? "दाएं मुड़ें" : "Turn right") : (lang === "hi" ? "बाएं मुड़ें" : "Turn left");
+      const distRounded = Math.round(distToNextTurn);
+      const prep = distRounded <= 40
+        ? (lang === "hi" ? `अब ${turnName}` : `${turnName} now`)
+        : (lang === "hi" ? `${distRounded} मी में ${turnName}` : `In ${distRounded}m, ${turnName}`);
+      return {
+        type: isRight ? "right" : "left",
+        distanceMeters: distRounded,
+        instruction: prep,
+      };
+    }
+    if (distToNextTurn > 500) break;
+  }
+
+  return {
+    type: "straight",
+    distanceMeters: Math.round(remaining),
+    instruction: lang === "hi" ? "सुरक्षित रास्ते पर सीधे चलें" : "Continue straight on safe route",
+  };
+}
+
 export default function RoutePanel(p: Props) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -294,6 +353,11 @@ export default function RoutePanel(p: Props) {
   const [toText, setToText] = useState("");
   const [muted, setMuted] = useState(false);
   const [lastSpokenSpot, setLastSpokenSpot] = useState<string>("");
+  const [navMode, setNavMode] = useState<"sim" | "live">("sim");
+  const [simProgress, setSimProgress] = useState(0);
+  const [simPlaying, setSimPlaying] = useState(true);
+  const [simSpeed, setSimSpeed] = useState<1 | 2 | 4>(1);
+  const [arrived, setArrived] = useState(false);
   const L = p.lang;
   const veh = vehicleInfo(p.vehicle);
   const r = p.result;
@@ -413,23 +477,94 @@ export default function RoutePanel(p: Props) {
     }
   }
 
-  // Live hazard distance monitoring
+  // Active route geometry
   const leg = r?.safe ?? r?.normal ?? null;
+  const coords = leg?.geometry?.coordinates ?? [];
+  const totalMeters = polylineTotalMeters(coords);
   const spotsOnRoute = leg?.spots_on_route ?? [];
 
-  const liveDistMeters = (p.userLocation && p.to)
-    ? haversineMeters(p.userLocation.pos, p.to)
-    : leg?.distance_m ?? 0;
-  const liveDistKm = (liveDistMeters / 1000).toFixed(1);
-  const liveSpeedKmh = p.userLocation?.speed != null ? Math.round(p.userLocation.speed * 3.6) : 0;
+  // Start navigation handler
+  function startNav() {
+    setSimProgress(0);
+    setSimPlaying(true);
+    setArrived(false);
+    p.setNavigating?.(true);
+    p.setFollowUser?.(true);
+    if (coords.length >= 2) {
+      p.setUserLocation?.({
+        pos: coords[0],
+        heading: calculateBearing(coords[0], coords[1]),
+        speed: 9.5 * simSpeed,
+        accuracy: 4,
+      });
+    }
+    speak(L === "hi" ? "नेविगेशन शुरू हो गया है। सुरक्षित रास्ता अनुसरण करें।" : "Starting navigation. Follow the safe route.", L);
+  }
 
-  const closestHazard = (p.userLocation && spotsOnRoute.length > 0)
+  // Simulation drive animation loop
+  useEffect(() => {
+    if (!p.navigating || navMode !== "sim" || !simPlaying || coords.length < 2) return;
+    const intervalMs = 150;
+    const speedMps = 9.5 * simSpeed; // ~34 km/h cruising scooter speed
+    const stepMeters = speedMps * (intervalMs / 1000);
+
+    const timer = setInterval(() => {
+      setSimProgress((prev) => {
+        const next = prev + stepMeters;
+        if (next >= totalMeters) {
+          clearInterval(timer);
+          setSimPlaying(false);
+          setArrived(true);
+          const lastPt = coords[coords.length - 1];
+          p.setUserLocation?.({
+            pos: lastPt,
+            heading: 0,
+            speed: 0,
+            accuracy: 3,
+          });
+          speak(L === "hi" ? "आप अपनी मंज़िल पर पहुँच गए हैं।" : "You have arrived at your destination.", L);
+          return totalMeters;
+        }
+
+        const interpolated = interpolatePolyline(coords, next);
+        p.setUserLocation?.({
+          pos: interpolated.pos,
+          heading: interpolated.heading,
+          speed: speedMps,
+          accuracy: 5,
+        });
+        return next;
+      });
+    }, intervalMs);
+
+    return () => clearInterval(timer);
+  }, [p.navigating, navMode, simPlaying, simSpeed, coords, totalMeters]);
+
+  // Dynamic distance & speed calculations
+  const liveDistMeters = navMode === "sim"
+    ? Math.max(0, totalMeters - simProgress)
+    : (p.userLocation && p.to)
+      ? haversineMeters(p.userLocation.pos, p.to)
+      : leg?.distance_m ?? 0;
+  const liveDistKm = (liveDistMeters / 1000).toFixed(1);
+  const liveSpeedKmh = navMode === "sim"
+    ? (simPlaying && !arrived ? Math.round(9.5 * simSpeed * 3.6) : 0)
+    : p.userLocation?.speed != null
+      ? Math.round(p.userLocation.speed * 3.6)
+      : 0;
+
+  const currentPos: LonLat | null = navMode === "sim"
+    ? (coords.length > 0 ? interpolatePolyline(coords, simProgress).pos : null)
+    : (p.userLocation?.pos ?? null);
+
+  const closestHazard = (currentPos && spotsOnRoute.length > 0)
     ? spotsOnRoute.map((s) => ({
         spot: s,
-        dist: haversineMeters(p.userLocation!.pos, [s.lon, s.lat]),
+        dist: haversineMeters(currentPos, [s.lon, s.lat]),
       })).sort((a, b) => a.dist - b.dist)[0]
     : null;
-  const hazardAhead = closestHazard && closestHazard.dist <= 600 ? closestHazard : null;
+  const hazardAhead = closestHazard && closestHazard.dist <= 500 ? closestHazard : null;
+  const turnInfo = coords.length > 1 ? getNextTurn(coords, simProgress, L, toText) : null;
 
   // Voice announcements for water hazards ahead
   useEffect(() => {
@@ -438,24 +573,33 @@ export default function RoutePanel(p: Props) {
     if (lastSpokenSpot === spotKey) return;
     setLastSpokenSpot(spotKey);
     const msg = L === "hi"
-      ? `सावधान: ${Math.round(hazardAhead.dist)} मीटर आगे पानी भराव है, गहराई लगभग ${hazardAhead.spot.depth_high} सेंटीमीटर।`
-      : `Caution: Flooded road ${Math.round(hazardAhead.dist)} meters ahead, depth about ${hazardAhead.spot.depth_high} centimeters.`;
+      ? `सावधान: ${Math.round(hazardAhead.dist)} मीटर आगे पानी भराव है, गहराई लगभग ${hazardAhead.spot.depth_high} सेंटीमीटर। सुरक्षित चक्कर लें।`
+      : `Caution: Flooded road ${Math.round(hazardAhead.dist)} meters ahead, depth about ${hazardAhead.spot.depth_high} centimeters. Following safe detour.`;
     speak(msg, L);
   }, [p.navigating, muted, hazardAhead, lastSpokenSpot, L]);
 
   // Active Google Maps style Navigation HUD
   if (p.navigating && r) {
-    const arrivalTime = new Date(Date.now() + (leg?.duration_min ?? 5) * 60000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    const etaMin = Math.max(1, Math.round(leg?.duration_min ?? 5));
+    const remainingMin = Math.max(1, Math.round(liveDistMeters / (9.5 * (navMode === "sim" ? simSpeed : 1)) / 60));
+    const arrivalTime = new Date(Date.now() + remainingMin * 60000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+    const TurnIcon = turnInfo?.type === "right"
+      ? CornerUpRight
+      : turnInfo?.type === "left"
+        ? CornerUpLeft
+        : turnInfo?.type === "destination"
+          ? Target
+          : ArrowUp;
+
     return (
       <>
         <div className="nav-hud-top" role="status">
           <div className="nav-hud-direction">
-            <div className="nav-hud-icon">
-              <Navigation size={20} />
+            <div className={`nav-hud-icon${turnInfo?.type === "destination" ? " arrived" : ""}`}>
+              <TurnIcon size={22} />
             </div>
             <div className="nav-hud-text">
-              <h4>{hazardAhead ? (L === "hi" ? "आगे पानी भराव का जोखिम" : "Water Hazard Ahead") : (L === "hi" ? "सुझाया सुरक्षित रास्ता" : "Following Safe Route")}</h4>
+              <h4>{turnInfo?.instruction || (L === "hi" ? "सुरक्षित रास्ता" : "Following Safe Route")}</h4>
               <p>{toText || (L === "hi" ? "मंज़िल की ओर" : "Heading to destination")}</p>
             </div>
             <button className="icon-btn" onClick={() => setMuted(!muted)} aria-label={muted ? "Unmute" : "Mute"}>
@@ -481,18 +625,71 @@ export default function RoutePanel(p: Props) {
         <div className="nav-hud-bottom">
           <div className="nav-stats-row">
             <div>
-              <span className="nav-eta-big">{etaMin} <small style={{ fontSize: "1rem" }}>min</small></span>
+              <span className="nav-eta-big">{remainingMin} <small style={{ fontSize: "1rem" }}>min</small></span>
               <span className="nav-sub-stats">({liveDistKm} km · {arrivalTime})</span>
             </div>
-            <span className="nav-speed-badge">
-              {liveSpeedKmh > 0 ? `${liveSpeedKmh} km/h` : (L === "hi" ? "लाइव GPS" : "Live GPS")}
-            </span>
+            <div className="nav-badges-group">
+              <span className="nav-speed-badge">
+                {liveSpeedKmh > 0 ? `${liveSpeedKmh} km/h` : "0 km/h"}
+              </span>
+              <button
+                type="button"
+                className={`nav-mode-pill ${navMode === "sim" ? "on" : ""}`}
+                onClick={() => {
+                  const next = navMode === "sim" ? "live" : "sim";
+                  setNavMode(next);
+                  if (next === "sim") {
+                    setSimPlaying(true);
+                  }
+                }}
+                title={navMode === "sim" ? "Switch to real phone GPS" : "Switch to route drive simulation"}
+              >
+                {navMode === "sim" ? "🛵 Simulation" : "🛰️ Live GPS"}
+              </button>
+            </div>
           </div>
+
+          {/* Simulation controls bar */}
+          {navMode === "sim" && (
+            <div className="nav-sim-bar">
+              <button
+                type="button"
+                className="nav-sim-btn"
+                onClick={() => setSimPlaying(!simPlaying)}
+                title={simPlaying ? "Pause drive" : "Play drive"}
+              >
+                {simPlaying ? <Pause size={14} /> : <Play size={14} />}
+                <span>{simPlaying ? (L === "hi" ? "रोकें" : "Pause") : (L === "hi" ? "चलाएं" : "Play")}</span>
+              </button>
+              <button
+                type="button"
+                className="nav-sim-btn"
+                onClick={() => setSimSpeed((s) => (s === 1 ? 2 : s === 2 ? 4 : 1))}
+                title="Simulation speed multiplier"
+              >
+                <span>⚡ {simSpeed}x</span>
+              </button>
+              <button
+                type="button"
+                className="nav-sim-btn"
+                onClick={() => {
+                  setSimProgress(0);
+                  setSimPlaying(true);
+                  setArrived(false);
+                }}
+                title="Restart route drive"
+              >
+                <RotateCcw size={14} />
+                <span>{L === "hi" ? "पुनः" : "Restart"}</span>
+              </button>
+            </div>
+          )}
+
           <div className="nav-actions-row">
             <button className="btn-nav-recenter" onClick={() => p.setFollowUser?.(true)}>
               <Target size={16} /> {p.followUser ? (L === "hi" ? "फॉलो जारी" : "Following") : (L === "hi" ? "रीसेंटर करें" : "Re-center")}
             </button>
-            <button className="btn-nav-exit" onClick={() => { p.setNavigating?.(false); p.setFollowUser?.(false); }}>
+            <button className="btn-nav-exit" onClick={() => { p.setNavigating?.(false); p.setFollowUser?.(false); setSimPlaying(false); }}>
               <X size={18} /> {L === "hi" ? "समाप्त" : "Exit"}
             </button>
           </div>
@@ -571,13 +768,9 @@ export default function RoutePanel(p: Props) {
         )}
 
         {leg && (
-          <button className="btn-nav-start" style={{ width: "100%", margin: "0" }} onClick={() => {
-            p.setNavigating?.(true);
-            p.setFollowUser?.(true);
-            speak(L === "hi" ? "नेविगेशन शुरू हो गया है। सुरक्षित रास्ता अनुसरण करें।" : "Starting navigation. Follow the safe route.", L);
-          }}>
+          <button className="btn-nav-start" style={{ width: "100%", margin: "0" }} onClick={startNav}>
             <Navigation size={18} style={{ fill: "currentColor" }} />
-            <span>{L === "hi" ? "नेविगेशन शुरू करें (लाइव GPS)" : "Start Navigation (Live GPS)"}</span>
+            <span>{L === "hi" ? "नेविगेशन शुरू करें (लाइव GPS + ड्राइव)" : "Start Navigation (Live GPS / Drive)"}</span>
           </button>
         )}
       </div>
@@ -690,13 +883,9 @@ export default function RoutePanel(p: Props) {
           </section>
 
           {leg && (
-            <button className="btn-nav-start" style={{ width: "100%", margin: "12px 0 6px" }} onClick={() => {
-              p.setNavigating?.(true);
-              p.setFollowUser?.(true);
-              speak(L === "hi" ? "नेविगेशन शुरू हो गया है। सुरक्षित रास्ता अनुसरण करें।" : "Starting navigation. Follow the safe route.", L);
-            }}>
+            <button className="btn-nav-start" style={{ width: "100%", margin: "12px 0 6px" }} onClick={startNav}>
               <Navigation size={20} style={{ fill: "currentColor" }} />
-              <span>{L === "hi" ? "नेविगेशन शुरू करें (लाइव GPS)" : "Start Navigation (Live GPS)"}</span>
+              <span>{L === "hi" ? "नेविगेशन शुरू करें (लाइव GPS + ड्राइव)" : "Start Navigation (Live GPS / Drive)"}</span>
             </button>
           )}
 

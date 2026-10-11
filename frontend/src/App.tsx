@@ -274,7 +274,7 @@ export default function App() {
         onRainPoint={(c: RainCity) => setRainSel(c.key)} lang={lang} route={route} altRoute={alt.g}
         from={panel.kind === "route" ? from : null} to={panel.kind === "route" ? to : null}
         picking={!navigating && panel.kind !== "rain"} onPick={onPick} dark={dark} coverage={panel.kind === "route" ? coverage : null}
-        userLocation={userLocation} followUser={followUser}
+        userLocation={userLocation} followUser={followUser} navigating={navigating} onStopFollow={() => setFollowUser(false)}
         onSpot={(s) => {
           if (picking || panel.kind === "route") {
             onPick([s.lon, s.lat]);
@@ -369,7 +369,7 @@ export default function App() {
         <RoutePanel vehicle={vehicle} lang={lang} mode={mode} city={city} at={mode === "sim" ? at : undefined} center={center} from={from} to={to} setFrom={setFrom} setTo={setTo}
           picking={picking} setPicking={setPicking} result={route} setResult={setRoute}
           alt={alt.v} setAlt={(v, g) => setAltState({ v, g })} showCoverage={setCoverage} coverage={coverage}
-          userLocation={userLocation} navigating={navigating} setNavigating={setNavigating}
+          userLocation={userLocation} setUserLocation={setUserLocation} navigating={navigating} setNavigating={setNavigating}
           followUser={followUser} setFollowUser={setFollowUser}
           onSignIn={() => setPanel({ kind: "account" })}
           onClose={() => { setPanel({ kind: "none" }); setRoute(null); setPicking(null); setAltState({ v: null, g: null }); setCoverage(null); setNavigating(false); setFollowUser(false); }} />

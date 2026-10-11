@@ -153,9 +153,41 @@ export default function MapView(p: Props) {
     }
 
     if (p.followUser) {
-      m.easeTo({ center: pos, duration: 800 });
+      if (p.navigating) {
+        m.easeTo({
+          center: pos,
+          zoom: 17,
+          pitch: 55,
+          bearing: heading != null && !isNaN(heading) ? heading : (m.getBearing() || 0),
+          duration: 500,
+        });
+      } else {
+        m.easeTo({ center: pos, duration: 800 });
+      }
     }
-  }, [p.userLocation, p.followUser]);
+  }, [p.userLocation, p.followUser, p.navigating]);
+
+  // Reset 3D camera tilt and bearing when exiting navigation
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    if (!p.navigating) {
+      m.easeTo({ pitch: 0, bearing: 0, duration: 600 });
+    }
+  }, [p.navigating]);
+
+  // Detect manual user drag during navigation to pause auto-following
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    const onDrag = () => {
+      if (cb.current.followUser) {
+        cb.current.onStopFollow?.();
+      }
+    };
+    m.on("dragstart", onDrag);
+    return () => { m.off("dragstart", onDrag); };
+  }, []);
 
   function drawRoute(fit = true) {
     const m = map.current;

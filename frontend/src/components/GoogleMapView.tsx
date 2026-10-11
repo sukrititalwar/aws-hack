@@ -155,8 +155,13 @@ export default function GoogleMapView(p: Props) {
     meOv.current = domOverlay(m, userLocationElement(heading), pos, 5);
     if (p.followUser) {
       m.panTo(ll(pos));
+      if (p.navigating) {
+        m.setZoom(17);
+        m.setTilt(45);
+        if (heading != null && !isNaN(heading)) m.setHeading(heading);
+      }
     }
-  }, [ready, p.userLocation, p.followUser]);
+  }, [ready, p.userLocation, p.followUser, p.navigating]);
 
   // ---- routes ----
   useEffect(() => {

@@ -28,4 +28,8 @@ export interface MapProps {
   userLocation?: UserLocation | null;
   /** Whether the map camera should auto-follow the user's live position (Google Maps navigation mode). */
   followUser?: boolean;
+  /** Active navigation HUD mode (3D pitched camera with heading bearing). */
+  navigating?: boolean;
+  /** Fired when user manually pans/drags the map during navigation. */
+  onStopFollow?: () => void;
 }

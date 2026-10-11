@@ -832,6 +832,65 @@ html[data-theme="dark"] .simtag { color: #1a0b33; }
   align-items: center;
   gap: 4px;
 }
+.nav-badges-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nav-mode-pill {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+.nav-mode-pill.on {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.nav-sim-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--surface-2);
+  padding: 6px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+.nav-sim-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: all 0.15s ease;
+}
+.nav-sim-btn:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.nav-sim-btn:active {
+  transform: scale(0.96);
+}
+.nav-hud-icon.arrived {
+  background: #16a34a;
+}
 
 .nav-actions-row {
   display: flex;
