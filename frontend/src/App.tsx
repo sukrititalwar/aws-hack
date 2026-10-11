@@ -303,7 +303,7 @@ export default function App() {
             </div>
             <RainStatus w={weather} lang={lang} city={city} onOpen={() => { if (mode === "sim") { setPanel({ kind: "sim" }); return; } setRainSel(null); setPanel({ kind: "rain" }); }} />
             <span className="spacer" />
-            <button className="chip icon-chip" onClick={() => setPanel({ kind: "mobile" })} aria-label={lang === "hi" ? "फ़ोन पर खोलें" : "Open on Phone"} title={lang === "hi" ? "फ़ोन पर खोलें (QR कोड)" : "Open on Phone (QR Code)"}>
+            <button className="chip icon-chip phonechip" onClick={() => setPanel({ kind: "mobile" })} aria-label={lang === "hi" ? "फ़ोन पर खोलें" : "Open on Phone"} title={lang === "hi" ? "फ़ोन पर खोलें (QR कोड)" : "Open on Phone (QR Code)"}>
               <Smartphone size={17} />
             </button>
             <button className="chip icon-chip" onClick={() => setTheme(THEME_NEXT[theme])} aria-label={THEME_LABEL[theme][lang]} title={THEME_LABEL[theme][lang]}>

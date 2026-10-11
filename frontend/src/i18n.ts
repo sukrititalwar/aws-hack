@@ -26,7 +26,7 @@ const STR = {
   imOn: { en: "I'm on", hi: "मेरी सवारी" },
   report: { en: "Report flooding", hi: "पानी भराव बताएँ" },
   safeRoute: { en: "Safe route", hi: "सुरक्षित रास्ता" },
-  demo: { en: "Simulation", hi: "सिम्युलेशन" },
+  demo: { en: "Demo", hi: "डेमो" },
   live: { en: "Live", hi: "लाइव" },
   disclaimer: {
     en: "Estimate from a photo. Depth can be wrong. If unsure, don't cross. Emergency: call 112.",
