@@ -21,7 +21,7 @@ MINUTES = 330
 END = START + MINUTES * 60
 CITY = "delhi"
 AREA = "Central Delhi: Minto Bridge, ITO, Pragati Maidan, Moolchand, Ashram"
-DISCLAIMER = "DEMO: every value here is made up for demonstration. These are not real reports."
+DISCLAIMER = "Demo storm."
 
 # place, lon, lat, onset (min), peak (min), peak depth cm, hazards, how many reports at the peak
 SITES = [
@@ -131,7 +131,7 @@ def rain_at(at: float | None) -> dict:
     at_risk = sum(1 for s in spots_at(at) if s["verdicts"].get("scooter") == "NO_GO")
     return {"rainNow": round(rate(m), 1), "rainPast3h": round(past, 1), "rainNext3h": round(nxt, 1),
             "maxRainNowAtHotspots": round(rate(m), 1), "hotspotsAtRisk": at_risk, "updatedAt": int(clamp(at)),
-            "source": "DEMO rainfall (made-up values)", "simulated": True}
+            "source": "DEMO rainfall", "simulated": True}
 
 
 def posts_at(at: float | None) -> list[dict]:

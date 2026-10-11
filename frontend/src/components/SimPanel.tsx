@@ -28,7 +28,7 @@ interface Props {
   onClose: () => void;
 }
 
-/** The DEMO storm summary. Everything shown here is made up and says so. */
+/** The DEMO storm summary. DEMO tags mark every item. */
 export default function SimPanel({ lang, data, vehicle, at, onClose }: Props) {
   const counts = { GO: 0, RISKY: 0, NO_GO: 0 };
   data?.spots.forEach((sp) => { counts[sp.verdicts[vehicle]] += 1; });

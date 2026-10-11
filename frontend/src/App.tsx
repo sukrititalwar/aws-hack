@@ -277,12 +277,6 @@ export default function App() {
             </button>
           ))}
         </div>
-        {mode === "sim" && (
-          <button className="banner sim" onClick={() => setPanel({ kind: "sim" })}>
-            <FlaskConical size={16} aria-hidden />
-            <span><strong>{lang === "hi" ? "डेमो" : "DEMO"}</strong> — {lang === "hi" ? "हर मान डेमो के लिए बनाया गया है। ये असली रिपोर्ट नहीं हैं।" : "Every value is made up for a demo. These are not real reports."}</span>
-          </button>
-        )}
         {offline && <div className="banner warn"><WifiOff size={16} aria-hidden /> {t("offline", lang)}</div>}
         {!API && <div className="banner warn">{t("noApi", lang)}: set VITE_API_URL</div>}
         {err && API && <button className="banner warn" onClick={() => setErr("")}><TriangleAlert size={16} aria-hidden /> {err}</button>}

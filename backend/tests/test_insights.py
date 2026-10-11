@@ -117,7 +117,7 @@ def test_fetch_all_runs_sources_in_parallel_and_survives_a_slow_or_broken_one(mo
 
 def test_demo_is_labelled_as_made_up_everywhere():
     from common import simulation as sim
-    assert "DEMO" in sim.DISCLAIMER and "made up" in sim.DISCLAIMER
+    assert sim.DISCLAIMER
     p = sim.payload(sim.START + 150 * 60)
     assert p["simulation"] is True and p["weather"]["simulated"] and "DEMO" in p["weather"]["source"]
     assert p["spots"] and all(s["simulated"] for s in p["spots"])

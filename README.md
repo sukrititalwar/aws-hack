@@ -109,7 +109,7 @@ Set `VITE_WHATSAPP_NUMBER=14155238886` and `VITE_WHATSAPP_JOIN="join <your-sandb
 ## Demo mode
 
 The **Demo** switch (top bar) shows a made-up heavy-rain evening in central Delhi (Minto Bridge, ITO, Pragati Maidan, Moolchand, Ashram) with a time slider, so the app can be shown on a dry day.
-**Every value in it is invented** (`backend/common/simulation.py`): the depths, reports, posts and rain are not real, and the screen says so (a DEMO banner and DEMO tags on every pin, post and figure).
+The values are invented (`backend/common/simulation.py`) and every pin, post and figure carries a DEMO tag.
 The logic is real: verdicts come from the same rules, spots are merged by the same code, and routes are planned by the same router. Nothing from the demo is written to the database or can trigger an alert.
 Endpoint: `GET /simulation?at=<epoch>`; routes: `POST /route` with `"mode": "sim"`.
 
