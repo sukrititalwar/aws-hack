@@ -122,6 +122,66 @@ export function depthBand(lo?: number, hi?: number): string {
 export type Key = keyof typeof STR;
 export const t = (k: Key, lang: Lang) => STR[k][lang];
 
+export const PREDICTIVE_UI = {
+  button: { en: "Next-hour outlook", hi: "अगले घंटे का अनुमान" },
+  loading: { en: "Estimating route risk…", hi: "रास्ते का जोखिम आँका जा रहा है…" },
+  title: { en: "Predictive mobility outlook", hi: "आवागमन का अनुमान" },
+  disclaimer: {
+    en: "A prototype index from hourly weather forecasts and current reports. It is not a probability, water-depth estimate, or safety guarantee.",
+    hi: "यह घंटेवार मौसम पूर्वानुमान और मौजूदा रिपोर्ट पर आधारित शुरुआती सूचकांक है। यह संभावना, पानी की गहराई का अनुमान या सुरक्षा की गारंटी नहीं है।",
+  },
+  unknown: { en: "Not enough current data", hi: "मौजूदा डेटा पर्याप्त नहीं" },
+  lower: { en: "Lower relative concern", hi: "तुलनात्मक रूप से कम चिंता" },
+  watch: { en: "Watch conditions", hi: "सावधानी रखें" },
+  elevated: { en: "Elevated concern", hi: "ज़्यादा चिंता" },
+  score: { en: "Prototype index", hi: "शुरुआती सूचकांक" },
+  weatherMissing: {
+    en: "Weather forecast unavailable; results may use reports only.",
+    hi: "मौसम पूर्वानुमान उपलब्ध नहीं; परिणाम केवल रिपोर्ट पर आधारित हो सकते हैं।",
+  },
+  reportsMissing: {
+    en: "Community reports or hotspot data are unavailable; comparisons are incomplete.",
+    hi: "सामुदायिक रिपोर्ट या जलभराव स्थल का डेटा उपलब्ध नहीं; तुलना अधूरी है।",
+  },
+  vehicles: { en: "Vehicle options", hi: "गाड़ी के विकल्प" },
+  departures: { en: "Departure alternatives", hi: "रवाना होने के विकल्प" },
+  now: { en: "Now", hi: "अभी" },
+  after: { en: "min later", hi: "मिनट बाद" },
+  recommended: { en: "Lower prototype index", hi: "कम शुरुआती सूचकांक" },
+  noRoute: { en: "No route available under current vehicle constraints.", hi: "मौजूदा वाहन सीमाओं में रास्ता उपलब्ध नहीं।" },
+  noComparable: {
+    en: "No comparable full-coverage recommendation is available; review the coverage and route notes.",
+    hi: "पूरे कवरेज के साथ तुलना योग्य सुझाव उपलब्ध नहीं; कवरेज और रास्ते की जानकारी देखें।",
+  },
+  reports: { en: "active reports", hi: "मौजूदा रिपोर्ट" },
+  coverage: { en: "forecast coverage", hi: "पूर्वानुमान कवरेज" },
+  noInputs: { en: "No route-level risk inputs are available.", hi: "रास्ते के जोखिम का डेटा उपलब्ध नहीं है।" },
+} as const;
+
+const PREDICTIVE_REASONS = {
+  rain_expected: { en: "Rain is forecast along part of this route.", hi: "इस रास्ते के कुछ हिस्सों में बारिश का पूर्वानुमान है।" },
+  active_report_near_route: { en: "A current waterlogging report is near this route.", hi: "इस रास्ते के पास पानी भराव की मौजूदा रिपोर्ट है।" },
+  official_closure: { en: "An active official closure is near this route.", hi: "इस रास्ते के पास आधिकारिक बंदी की मौजूदा सूचना है।" },
+  chronic_hotspot_risk: { en: "A known flood hotspot has an active rain-risk status nearby.", hi: "पास के ज्ञात जलभराव स्थल पर बारिश से जुड़ा जोखिम दर्ज है।" },
+  stale_observations: { en: "Some nearby observations are older and weighted less.", hi: "पास की कुछ पुरानी रिपोर्टों का महत्व कम किया गया है।" },
+  conflicting_reports: { en: "Nearby reports disagree about vehicle risk.", hi: "पास की रिपोर्टों में वाहन जोखिम को लेकर मतभेद है।" },
+  no_recent_reports: { en: "No active community report was found; that does not mean the road is dry.", hi: "कोई सक्रिय सामुदायिक रिपोर्ट नहीं मिली; इसका मतलब सड़क सूखी होना नहीं है।" },
+  weather_unavailable: { en: "Weather forecast data could not be loaded.", hi: "मौसम पूर्वानुमान डेटा नहीं मिल सका।" },
+  reports_unavailable: { en: "Community report data could not be loaded.", hi: "सामुदायिक रिपोर्ट डेटा नहीं मिल सका।" },
+  hotspots_unavailable: { en: "Flood hotspot data could not be loaded.", hi: "जलभराव स्थल का डेटा नहीं मिल सका।" },
+  weather_partial: { en: "Weather forecast coverage is incomplete for this route.", hi: "इस रास्ते के लिए मौसम पूर्वानुमान अधूरा है।" },
+  route_horizon_partial: { en: "Only route segments arriving within the first hour are scored.", hi: "केवल पहले घंटे में पहुँचने वाले रास्ते के हिस्सों का आकलन है।" },
+  route_blocked: { en: "Current vehicle-specific constraints block a route.", hi: "मौजूदा वाहन-विशिष्ट सीमाएँ रास्ता रोकती हैं।" },
+  no_feasible_route: { en: "No feasible route was found for this vehicle.", hi: "इस वाहन के लिए कोई चलने योग्य रास्ता नहीं मिला।" },
+  no_route_risk_inputs: { en: "There is not enough data to score this route.", hi: "इस रास्ते का जोखिम आँकने के लिए पर्याप्त डेटा नहीं है।" },
+} as const;
+
+export function predictiveReason(code: string, lang: Lang): string {
+  return code in PREDICTIVE_REASONS
+    ? PREDICTIVE_REASONS[code as keyof typeof PREDICTIVE_REASONS][lang]
+    : PREDICTIVE_UI.noInputs[lang];
+}
+
 export function ago(seconds: number, lang: Lang) {
   const m = Math.max(0, Math.round(seconds / 60));
   const s = m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;

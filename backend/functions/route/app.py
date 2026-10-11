@@ -62,6 +62,11 @@ def bus_impact(event):
 
 
 def handler(event, _ctx):
+    if event.get("routeKey") == "POST /predictive-route":
+        if not config.PREDICTIVE_ROUTE_ENABLED:
+            return http.bad("Predictive routing is not enabled.", 404)
+        from functions.predictive_route.app import handler as predictive_handler
+        return predictive_handler(event, _ctx)
     if event.get("routeKey") == "GET /bus-impact":
         return bus_impact(event)
     try:

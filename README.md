@@ -17,6 +17,7 @@ At the edge of a waterlogged road, people ask one question: *"Can MY vehicle cro
 | ✅ **Ground truth** | Chronic hotspots for Delhi, Gurugram and Kochi, each **cited to a news report** and **position-checked against OpenStreetMap** (`data/hotspots_*.geojson`). Every spot shows its level: 🌧 predicted → 📷 AI estimate → ✔ confirmed by several reports → 🛡 official. |
 | 🕳️ **DrainReady** | Residents photograph a blocked drain. Bedrock classifies it as clear / partly / fully blocked. Duplicates within 30 m are grouped. Blockages are ranked by severity × number of reporters × 24 h rain forecast × nearness to a known flood spot. A dispatcher assigns a worker, and a drain is only marked cleared when the **after-photo itself shows a clear drain**. Impact: cleared before rain, median hours to clear, repeat blockages. |
 | 🧭 **Safe route + "who can still go?"** | One trip, six vehicle profiles, including separate petrol and EV scooters. *"Scooter must detour (+2 min), car can take the usual road slowly, bus OK."* Tap a vehicle to see its route. Lanes included; buses stay on bus-capable roads. |
+| ⏱ **Predictive mobility (experimental)** | An opt-in endpoint compares route risk for vehicles and departure times using hourly Open-Meteo forecasts, current hotspot status and recent reports. Its configurable weighted score is a prototype index, not a probability, water-depth estimate or safety guarantee. Both backend and frontend gates default to off. |
 | 🚌 **Buses** | Bus routes passing a flooded spot (likely diverted), and stops that are unsafe to walk to. From the official GTFS (Delhi DTC/cluster) or OSM. |
 
 ## Architecture
@@ -35,7 +36,8 @@ flowchart LR
   EB1[EventBridge 10 min] --> SOC[Lambda social_ingest] -->|news / Bluesky / Mastodon / Reddit / X| BRT[Bedrock text] --> LOC[Amazon Location Places] --> DDB
   EB2[EventBridge 15 min] --> RS[Lambda risk_scheduler] -->|Open-Meteo rain| DDB
   RS --> SNS[SNS alerts]
-  APIGW --> RT[Lambda route + bus-impact<br/>A* on OSMnx graph] --> DDB
+  APIGW --> RT[Lambda route + bus-impact + opt-in predictive-route<br/>A* on OSMnx graph] --> DDB
+  RT -.->|when enabled| OM[Open-Meteo hourly forecast]
   APIGW --> L1[Lambda reports · spots · hotspots · vote · subscribe] --> DDB
 ```
 **AWS:** Amplify, API Gateway, Lambda, Bedrock (vision + text), Rekognition, S3, DynamoDB (TTL + Streams), SNS, EventBridge Scheduler, Amazon Location Service (maps + Places geocoding), AWS End User Messaging Social (WhatsApp), SSM Parameter Store, CloudWatch (EMF metrics) and X-Ray. **AWS open source:** SAM / SAM CLI.
@@ -44,6 +46,7 @@ flowchart LR
 - **We don't claim centimetre accuracy.** Reliable metric depth from one photo or a phone video is hard (perspective, reflections, unknown road shape). So the UI leads with **categories**: *Passable · Potentially unsafe · Unsafe · Requires inspection*, and the depth is shown as a rough band rounded to 5 cm. If confidence is low, the image is poor, no reference object (kerb, tyre, person) is visible, or the range is very wide, the app says **Requires inspection** and a "GO" is never shown as passable (it is also escalated). Videos are reduced to one still frame and use the same pipeline.
 - **Hotspots** (`data/hotspots_<city>.geojson`): `source_url` is a news report naming the spot. `osm_match` says how the position was checked: an OSM `tunnel=yes` underpass, a named junction, or a road × railway intersection (Minto Bridge = Vivekanand Marg under the railway). Points without a citation are `verified: false` and are not seeded.
 - **Rain** is Open-Meteo model data (analysis + nowcast), not a rain gauge. The UI labels it.
+- **Predictive mobility** uses forecast precipitation/probability and current flood evidence aligned to estimated route arrival times. Scores are comparative heuristics with explicit data coverage; no forecast or report is a safety guarantee. The feature remains disabled unless `PredictiveRouteEnabled=true` is supplied to SAM and `VITE_PREDICTIVE_ROUTE_ENABLED=true` is set for the frontend build.
 - **Predicted spots** are clearly labelled 🌧 and use low confidence, so the rules engine is stricter. A real report within 150 m replaces the prediction.
 - **Social posts**: only public posts via official APIs/feeds. Handles are shown only for official accounts, and every pin links to its source.
 - **Depth accuracy**: `cd backend && python -m tests.eval_depth` on `data/eval_set.csv` gives MAE, % within ±10 cm, and **"scooter told GO when truth NO-GO"** (the dangerous error).

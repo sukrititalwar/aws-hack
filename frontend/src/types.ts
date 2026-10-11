@@ -144,6 +144,59 @@ export interface RouteResult {
   checked_at?: number;
   coverage?: CoverageArea[];
 }
+export type PredictiveRiskLevel = "lower_relative_concern" | "watch" | "elevated" | "unknown";
+
+export interface PredictiveRouteAssessment {
+  risk_score: number | null;
+  risk_level: PredictiveRiskLevel;
+  coverage_fraction: number;
+  covered_points: number;
+  total_points: number;
+  weather_coverage_fraction?: number;
+  stale_reports?: number;
+  stale_hotspots?: number;
+  conflicting_report_groups?: number;
+  reasons: string[];
+}
+
+export interface PredictiveVehicleOption extends PredictiveRouteAssessment {
+  vehicle: Vehicle;
+  feasible: boolean;
+  route: RouteLeg | null;
+}
+
+export interface PredictiveDepartureOption extends PredictiveRouteAssessment {
+  offset_min: number;
+  departure_at: number;
+  feasible: boolean;
+  recommended: boolean;
+  route: RouteLeg;
+}
+
+export interface PredictiveRouteResult {
+  generated_at: number;
+  lookahead_minutes: number;
+  risk_model: {
+    name: string;
+    is_probability: false;
+    weights: Record<string, number>;
+    score_bands: Record<string, number>;
+  };
+  selected_vehicle: Vehicle;
+  recommended_vehicle: Vehicle | null;
+  vehicle_options: PredictiveVehicleOption[];
+  departure_alternatives: PredictiveDepartureOption[];
+  preferred_departure_at: number | null;
+  data_quality: {
+    weather: "available" | "unavailable";
+    reports_available: boolean;
+    hotspots_available: boolean;
+    forecast_locations: number;
+    active_reports: number;
+    hotspots: number;
+    limitations: string[];
+  };
+}
 export interface CoverageArea {
   name: string;
   bbox: [number, number, number, number];

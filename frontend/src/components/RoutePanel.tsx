@@ -1,9 +1,9 @@
 import { ArrowLeft, Bell, Info, LocateFixed, MapPinned, MapPinOff, Scan, Navigation, OctagonX, Route as RouteIcon, Share2, ShieldQuestion, TriangleAlert, X } from "lucide-react";
-import { useState } from "react";
-import { api, geocode, hasLocationKey } from "../api";
-import { t, VERDICT_UI, vehicleInfo, type Lang } from "../i18n";
+import { useEffect, useState } from "react";
+import { api, geocode, hasLocationKey, PREDICTIVE_ROUTE_ENABLED } from "../api";
+import { PREDICTIVE_UI, predictiveReason, t, VERDICT_UI, vehicleInfo, type Lang } from "../i18n";
 import { VehicleIcon, VerdictIcon } from "../icons";
-import type { CompareRow, CoverageArea, LonLat, Mode, RouteResult, Vehicle } from "../types";
+import type { CompareRow, CoverageArea, LonLat, Mode, PredictiveRiskLevel, PredictiveRouteResult, RouteResult, Vehicle } from "../types";
 import { getPosition } from "../util";
 
 type Field = "from" | "to";
@@ -53,6 +53,12 @@ function summarise(r: RouteResult): Summary {
 const SUMMARY_ICON = { clear: Navigation, detour: RouteIcon, bad: OctagonX, unknown: ShieldQuestion } as const;
 
 const clock = (s?: number) => new Date((s ?? Date.now() / 1000) * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const riskLabel = (level: PredictiveRiskLevel, lang: Lang) => ({
+  lower_relative_concern: PREDICTIVE_UI.lower[lang],
+  watch: PREDICTIVE_UI.watch[lang],
+  elevated: PREDICTIVE_UI.elevated[lang],
+  unknown: PREDICTIVE_UI.unknown[lang],
+})[level];
 
 /** Same trip for other vehicles: "scooter must detour, but a car/bus can take the usual road". */
 function Compare({ rows, lang, current, alt, setAlt }: { rows: CompareRow[]; lang: Lang; current: Vehicle; alt: Vehicle | null;
@@ -134,20 +140,43 @@ export default function RoutePanel(p: Props) {
   const [contact, setContact] = useState("");
   const [subMsg, setSubMsg] = useState("");
   const [alertsOpen, setAlertsOpen] = useState(false);
+  const [prediction, setPrediction] = useState<PredictiveRouteResult | null>(null);
+  const [predictionBusy, setPredictionBusy] = useState(false);
+  const [predictionErr, setPredictionErr] = useState("");
   const L = p.lang;
   const veh = vehicleInfo(p.vehicle);
   const r = p.result;
+
+  useEffect(() => {
+    setPrediction(null);
+    setPredictionErr("");
+  }, [p.result, p.vehicle, p.mode, p.from, p.to]);
 
   async function go() {
     if (!p.from || !p.to) return;
     setBusy(true);
     setErr("");
+    setPrediction(null);
     try {
       p.setResult(await api.route(p.from, p.to, p.vehicle, p.mode, p.at));
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function predict() {
+    if (!p.from || !p.to) return;
+    setPredictionBusy(true);
+    setPredictionErr("");
+    setPrediction(null);
+    try {
+      setPrediction(await api.predictiveRoute(p.from, p.to, p.vehicle));
+    } catch (e) {
+      setPredictionErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPredictionBusy(false);
     }
   }
 
@@ -181,6 +210,7 @@ export default function RoutePanel(p: Props) {
   const outside = !!r && (r.out_of_area ?? r.note.startsWith(COVERAGE_PREFIX));
   const note = r ? r.note.replace(COVERAGE_PREFIX, "") : "";
   const showNormal = !!(r?.normal && r.safe && r.safe.distance_m !== r.normal.distance_m);
+  const selectedPrediction = prediction?.vehicle_options.find((option) => option.vehicle === p.vehicle);
 
   const shareText = r && p.from && p.to && leg
     ? [
@@ -273,6 +303,95 @@ export default function RoutePanel(p: Props) {
               <p className="sum-note">{L === "hi" ? "रिपोर्ट न होने का मतलब सूखी सड़क नहीं है। अंडरपास पर ध्यान दें।" : "No reports isn't the same as dry roads. Take care at underpasses."}</p>
             )}
           </section>
+
+          {PREDICTIVE_ROUTE_ENABLED && p.mode === "live" && p.from && p.to && (
+            <section className="rsec">
+              <div className="row gap" style={{ justifyContent: "space-between" }}>
+                <h3 className="sec-title">{PREDICTIVE_UI.title[L]}</h3>
+                <button className="btn small-btn" onClick={predict} disabled={predictionBusy}>
+                  <TriangleAlert size={16} aria-hidden />
+                  {predictionBusy ? PREDICTIVE_UI.loading[L] : PREDICTIVE_UI.button[L]}
+                </button>
+              </div>
+              <p className="hint">{PREDICTIVE_UI.disclaimer[L]}</p>
+              {predictionErr && <p className="error-box">{predictionErr}</p>}
+              {prediction && (
+                <>
+                  {prediction.data_quality.weather !== "available" && (
+                    <p className="coverage">{PREDICTIVE_UI.weatherMissing[L]}</p>
+                  )}
+                  {(!prediction.data_quality.reports_available
+                    || !prediction.data_quality.hotspots_available) && (
+                    <p className="coverage">{PREDICTIVE_UI.reportsMissing[L]}</p>
+                  )}
+                  <p className="small muted">
+                    {prediction.data_quality.active_reports} {PREDICTIVE_UI.reports[L]} ·{" "}
+                    {prediction.data_quality.forecast_locations} {L === "hi" ? "मौसम बिंदु" : "forecast locations"}
+                  </p>
+                  {selectedPrediction && (
+                    <p className="sum-note">
+                      <strong>{selectedPrediction.risk_score === null
+                        ? PREDICTIVE_UI.unknown[L]
+                        : `${riskLabel(selectedPrediction.risk_level, L)} · ${PREDICTIVE_UI.score[L]} ${selectedPrediction.risk_score}/100`}</strong>
+                    </p>
+                  )}
+                  {prediction.recommended_vehicle ? (
+                    <p className="sum-note">
+                      {L === "hi" ? "कम सूचकांक वाला व्यवहार्य विकल्प:" : "Feasible option with lower index:"}{" "}
+                      {vehicleInfo(prediction.recommended_vehicle)[L]}
+                    </p>
+                  ) : (
+                    <p className="sum-note">{PREDICTIVE_UI.noComparable[L]}</p>
+                  )}
+                  <h4 className="small">{PREDICTIVE_UI.vehicles[L]}</h4>
+                  <ul className="compare">
+                    {prediction.vehicle_options.map((option) => (
+                      <li key={option.vehicle}>
+                        <button className={p.alt === option.vehicle ? "sel" : ""} aria-pressed={p.alt === option.vehicle}
+                          disabled={!option.feasible || !option.route}
+                          onClick={() => option.route && p.setAlt(option.vehicle, option.route.geometry)}>
+                          <span className="cicon"><VehicleIcon v={option.vehicle} size={20} /></span>
+                          <span className="cmain">
+                            <span className="cname">{vehicleInfo(option.vehicle)[L]}</span>
+                            <span className="small muted">{option.route
+                              ? `${(option.route.distance_m / 1000).toFixed(1)} km · ${Math.round(option.route.duration_min)} min · ${option.risk_score === null
+                                ? PREDICTIVE_UI.unknown[L]
+                                : `${riskLabel(option.risk_level, L)} · ${option.risk_score}/100`} · ${PREDICTIVE_UI.coverage[L]} ${Math.round(option.coverage_fraction * 100)}%`
+                              : PREDICTIVE_UI.noRoute[L]}</span>
+                          </span>
+                          <span className="cstat">{option.vehicle === prediction.recommended_vehicle
+                            ? PREDICTIVE_UI.recommended[L] : riskLabel(option.risk_level, L)}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <h4 className="small">{PREDICTIVE_UI.departures[L]}</h4>
+                  <ul className="compare">
+                    {prediction.departure_alternatives.map((option) => (
+                      <li key={option.offset_min}>
+                        <button className={option.recommended ? "sel" : ""} aria-pressed={option.recommended}
+                          onClick={() => p.setAlt(p.vehicle, option.route.geometry)}>
+                          <span className="cmain">
+                            <span className="cname">{option.offset_min === 0 ? PREDICTIVE_UI.now[L]
+                              : `${option.offset_min} ${PREDICTIVE_UI.after[L]}`} ·{" "}
+                              {new Date(option.departure_at * 1000).toLocaleTimeString(L === "hi" ? "hi-IN" : "en-IN",
+                                { hour: "2-digit", minute: "2-digit" })}</span>
+                            <span className="small muted">{option.risk_score === null
+                              ? riskLabel(option.risk_level, L)
+                              : `${riskLabel(option.risk_level, L)} · ${option.risk_score}/100`}</span>
+                          </span>
+                          {option.recommended && <span className="cstat">{PREDICTIVE_UI.recommended[L]}</span>}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  {selectedPrediction?.reasons.map((reason) => (
+                    <p className="hint" key={reason}>{predictiveReason(reason, L)}</p>
+                  ))}
+                </>
+              )}
+            </section>
+          )}
 
           {(showNormal || r.safe) && (
             <section className="rsec legs">
