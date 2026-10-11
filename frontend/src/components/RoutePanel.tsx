@@ -591,6 +591,16 @@ export default function RoutePanel(p: Props) {
     speak(msg, L);
   }, [p.navigating, muted, hazardAhead, lastSpokenSpot, L]);
 
+  // (hooks must stay above the early returns below)
+  const [collapsed, setCollapsed] = useState(false);
+
+  // On mobile screens, start in peek mode once route is calculated so map is visible
+  useEffect(() => {
+    if (r && window.innerWidth < 760) {
+      setCollapsed(true);
+    }
+  }, [r]);
+
   // Active Google Maps style Navigation HUD
   if (p.navigating && r) {
     const remainingMin = Math.max(1, Math.round(liveDistMeters / (9.5 * (navMode === "sim" ? simSpeed : 1)) / 60));
@@ -730,15 +740,6 @@ export default function RoutePanel(p: Props) {
   const note = r ? r.note.replace(COVERAGE_PREFIX, "").replace("One of your points is outside the routable area. ", "").replace("One of your points is outside the routable demo area. ", "") : "";
   const showNormal = !!(r?.normal && r.safe && r.safe.distance_m !== r.normal.distance_m);
   const selectedPrediction = prediction?.vehicle_options.find((option) => option.vehicle === p.vehicle);
-
-  const [collapsed, setCollapsed] = useState(false);
-
-  // On mobile screens, start in peek mode once route is calculated so map is visible
-  useEffect(() => {
-    if (r && window.innerWidth < 760) {
-      setCollapsed(true);
-    }
-  }, [r]);
 
   const shareText = r && p.from && p.to && leg
     ? [
