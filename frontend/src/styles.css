@@ -491,3 +491,121 @@ button.banner { cursor: pointer; }
 .savedchips { margin-top: 6px; }
 .savedchips .chip { max-width: 100%; }
 .savedchips .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 9ch; }
+
+/* ---------- Google Maps engine ---------- */
+/* Google's logo and terms sit at the bottom-left of the map and must stay visible: stop the map above the button row. */
+html[data-map="google"] .map.gmap { bottom: calc(env(safe-area-inset-bottom) + 76px); }
+@media (min-width: 760px) {
+  html[data-map="google"] .map.gmap { bottom: 0; }
+  html[data-map="google"] .legend-ctl { bottom: 44px; }
+  html[data-map="google"] .legend-ctl.raised { bottom: 126px; }
+}
+.gm-locate { margin: 0 10px; width: 40px; height: 40px; border-radius: 8px; border: 0; background: #fff; color: #333; box-shadow: 0 2px 6px rgba(0,0,0,.3); cursor: pointer; display: grid; place-items: center; }
+.me-dot { width: 16px; height: 16px; border-radius: 50%; background: #2563eb; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(37,99,235,.25); }
+.mapnote { position: absolute; z-index: 5; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom) + 140px); padding: 8px 12px; border: 0; border-radius: 12px; background: var(--risky-bg); color: var(--risky); font-weight: 600; font-size: 0.85rem; text-align: left; box-shadow: var(--shadow); cursor: pointer; }
+
+/* ---------- Rain across India ---------- */
+.raindot { border-radius: 50%; border: 2px solid #fff; display: grid; place-items: center; padding: 0; cursor: pointer; font-weight: 800; font-size: 0.72rem; color: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.35); }
+.raindot.dry { background: #94a3b8; opacity: 0.7; border-width: 1px; }
+.raindot.light { background: #38bdf8; color: #06324a; }
+.raindot.moderate { background: #2563eb; }
+.raindot.heavy { background: #7c3aed; }
+.raindot.extreme { background: #be123c; }
+.raindot.live { outline: 3px solid rgba(250, 204, 21, .9); outline-offset: 1px; }
+.raincall { display: flex; flex-direction: column; gap: 2px; padding: 12px; border-radius: 12px; background: var(--surface-2); margin-bottom: 8px; }
+.raincall.heavy { background: var(--nogo-bg, #fee2e2); color: var(--nogo); }
+.rainlist { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.rainlist button { width: 100%; display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; text-align: left; padding: 8px 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); cursor: pointer; }
+.rainlist.compact button { padding: 5px 10px; }
+.rl-main { display: flex; flex-direction: column; min-width: 0; }
+.rl-nums b { font-size: 1.15rem; }
+.livebadge { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: #fef08a; color: #713f12; }
+.levelchip { font-size: 0.74rem; font-weight: 800; padding: 3px 9px; border-radius: 999px; white-space: nowrap; background: var(--surface-2); }
+.levelchip.light { background: #bae6fd; color: #075985; }
+.levelchip.moderate { background: #bfdbfe; color: #1e3a8a; }
+.levelchip.heavy { background: #ddd6fe; color: #4c1d95; }
+.levelchip.extreme { background: #fecdd3; color: #881337; }
+.rainDry { margin-top: 10px; }
+.rainDry summary { cursor: pointer; font-weight: 700; margin-bottom: 6px; }
+.citycard { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.citycard h3 { margin: 0; font-size: 1.3rem; }
+.rainstats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+.rainstats div { background: var(--surface-2); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.rainstats b { font-size: 1.5rem; }
+.rainstats span { font-size: 0.72rem; color: var(--muted); }
+.feed { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.feed li { border-left: 3px solid var(--border); padding-left: 10px; }
+.feed p { margin: 2px 0; }
+
+/* ---------- Phones and touch screens ---------- */
+@media (max-width: 760px), (pointer: coarse) {
+  /* 16px stops iOS Safari zooming the page when a field is focused */
+  input:not([type="range"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; }
+  /* thumb-sized targets (44px is the Apple/Google guideline) */
+  .chip, .vchip, .btn, .seg button, .tabs button, .rainDry summary, .rainlist button, .drainlist button, .hits button, .compare li button { min-height: 44px; }
+  .icon-btn { width: 44px; height: 44px; }
+  .icon-btn.sm { width: 40px; height: 40px; }
+  .rainDry summary { display: flex; align-items: center; }
+  /* toolbar: 40px tall, kept compact so city + rain + 3 icons still fit in one row at 360px */
+  .toolbar .citysel, .toolbar .icon-chip, .toolbar .lang, .toolbar .rainpill { min-height: 40px; }
+  .toolbar .citysel { font-size: 16px; }
+  .toolbar .icon-chip, .toolbar .lang { min-width: 40px; }
+  .maplibregl-ctrl-group button { width: 40px; height: 40px; }
+  .gm-locate { width: 44px; height: 44px; }
+  .field-label { margin-top: 14px; }
+  .sheet { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  /* the rain map needs to stay visible above its sheet */
+  .sheet.rainsheet { max-height: 52%; }
+}
+
+/* ---------- DEMO storm (made-up values, always labelled) ---------- */
+:root { --sim: #7c3aed; --sim-bg: #f3e8ff; }
+html[data-theme="dark"] { --sim: #c4a1ff; --sim-bg: #2e1d4d; }
+@media (prefers-color-scheme: dark) { html:not([data-theme="light"]) { --sim: #c4a1ff; --sim-bg: #2e1d4d; } }
+.seg button.simbtn.on { background: var(--sim-bg); color: var(--sim); }
+.banner.sim { background: var(--sim-bg); color: var(--sim); border-color: transparent; align-items: flex-start; line-height: 1.3; }
+.banner.sim svg { flex: none; margin-top: 2px; }
+.simwarn { background: var(--sim-bg); color: var(--sim); border-radius: 10px; padding: 8px 12px; margin: 8px 0; font-size: 0.875rem; line-height: 1.35; }
+.simtag { display: inline-block; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.04em; padding: 1px 5px; border-radius: 999px; background: var(--sim); color: #fff; line-height: 1.3; }
+html[data-theme="dark"] .simtag { color: #1a0b33; }
+.simtag.inline { margin: 0 4px; vertical-align: middle; }
+.pin i .simtag { font-size: 0.5rem; padding: 0 3px; }
+.badge.sim { background: var(--sim-bg); color: var(--sim); }
+.rainpill.sim { background: var(--sim-bg); color: var(--sim); }
+.chip.static { cursor: default; }
+.simdrain { display: flex; flex-direction: column; gap: 2px; }
+
+/* phones: keep the whole toolbar on screen when the Demo tag and risk count are also shown */
+@media (max-width: 560px) {
+  .rp-risk, .rainpill .simtag { display: none; }
+  .rainpill { flex: 0 1 auto; min-width: 0; }
+  .toolbar { flex-wrap: nowrap; }
+  .toolbar > * { flex-shrink: 0; }
+  .toolbar .rainpill { flex-shrink: 1; overflow: hidden; }
+}
+@media (max-width: 420px) {
+  .toolbar .seg button svg { display: none; }
+  .toolbar .citysel { max-width: 84px; }
+  .toolbar .rainpill { min-width: 60px; justify-content: center; }
+}
+@media (max-width: 420px) {
+  .toolbar .rainpill { min-width: 76px; }
+  .toolbar .rainpill svg { display: none; }
+}
+@media (max-width: 380px) {
+  .toolbar { gap: 3px; padding: 4px; }
+  .toolbar .citysel { max-width: 70px; padding-left: 4px; }
+  .toolbar .seg button { padding: 5px 5px; }
+  .toolbar .rainpill { min-width: 62px; padding: 3px 5px; font-size: 0.72rem; }
+  .toolbar .icon-chip, .toolbar .lang { width: 34px; min-width: 34px; }
+}
+@media (max-width: 380px) {
+  .toolbar .citysel { max-width: 62px; }
+  .toolbar .rainpill { min-width: 54px; }
+  .toolbar .icon-chip, .toolbar .lang { width: 32px; min-width: 32px; }
+}
+@media (max-width: 380px) {
+  .toolbar .rainpill { min-width: 58px; padding: 3px 4px; font-size: 0.66rem; overflow: visible; }
+  .toolbar .citysel { max-width: 66px; }
+  .toolbar .seg button { padding: 5px 4px; font-size: 0.8rem; }
+}

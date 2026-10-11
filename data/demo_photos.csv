@@ -1,3 +1,0 @@
-file,lat,lon,city,place,replay_time,true_depth_cm_if_known,source,licence
-# One row per photo in data/demo_photos/. Only photos you took or are allowed to use. Delete this comment row's leading # to keep CSV readers happy, or leave it (rows whose file starts with # are skipped).
-# example: andheri_subway_1.jpg,19.1190,72.8465,mumbai,Andheri Subway,2025-07-26T18:20:00+05:30,45,https://link-to-original,CC BY 4.0 / own photo

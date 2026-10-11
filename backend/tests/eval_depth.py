@@ -4,9 +4,10 @@ Reports MAE (cm, using the midpoint of the predicted range), % within +-10 cm, a
 dangerous error rate: how often the scooter verdict was MORE optimistic than the verdict the
 true depth would give (e.g. we said GO, truth was NO_GO).
 
-  cd backend && python -m tests.eval_depth            # uses data/demo_cache, calls Bedrock for new photos
+  cd backend && python -m tests.eval_depth            # uses data/eval_cache, calls Bedrock for new photos
 """
 import csv
+import hashlib
 import json
 import os
 import sys
@@ -15,8 +16,24 @@ ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
 sys.path.insert(0, os.path.join(ROOT, "backend"))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
-from common import config, rules  # noqa: E402
-from seed_demo import cached_assessment  # noqa: E402
+from common import config, depth, rules  # noqa: E402
+
+CACHE_DIR = os.path.join(ROOT, "data", "eval_cache")   # analysis results cached per photo + model, so re-runs are free
+
+
+def cached_assessment(photo_path: str, city: str, place: str) -> dict:
+    data = open(photo_path, "rb").read()
+    h = hashlib.sha256(data + config.BEDROCK_MODEL_ID.encode()).hexdigest()[:16]
+    cpath = os.path.join(CACHE_DIR, f"{h}.json")
+    if os.path.exists(cpath):
+        return json.load(open(cpath, encoding="utf-8"))
+    print(f"  Bedrock -> {os.path.basename(photo_path)} ...", flush=True)
+    a, metrics = depth.estimate_depth(data, city, place)
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    json.dump({"assessment": a, "metrics": metrics}, open(cpath, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    print(f"    {a['depth_cm_low']:.0f}-{a['depth_cm_high']:.0f} cm, {a['confidence']}, {metrics.get('latency_ms')} ms")
+    return {"assessment": a, "metrics": metrics}
+
 
 LEVEL = {l: i for i, l in enumerate(rules.LEVELS)}
 
@@ -29,7 +46,7 @@ def main(city="mumbai"):
         return
     results = []
     for r in rows:
-        p = os.path.join(ROOT, "data", "demo_photos", r["file"])
+        p = os.path.join(ROOT, "data", "eval_photos", r["file"])
         if not os.path.exists(p):
             p = os.path.join(ROOT, "data", r["file"])
         a = cached_assessment(p, city, "")["assessment"]

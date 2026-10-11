@@ -5,10 +5,9 @@ Uses the REAL rules, spot merging, predicted-spot and routing code on the real g
   * rain: live Open-Meteo rainfall at every cited hotspot (refreshed every 10 min)
   * --social: live Google News / Bluesky / Mastodon posts every 10 min (heuristic extraction:
     only posts naming a known hotspot become pins; production uses Bedrock + Amazon Location)
-  * --storm: pretend it is pouring at every hotspot (to see predicted spots when it is dry)
 Photo analysis returns a canned MOCK result unless --bedrock (real Bedrock with your AWS creds).
 
-  python scripts/local_api.py [--social] [--storm] [--bedrock]      # http://localhost:8787
+  python scripts/local_api.py [--social] [--bedrock]      # http://localhost:8787
 """
 import argparse
 import gzip
@@ -27,7 +26,8 @@ from urllib.parse import parse_qs, urlparse
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.join(ROOT, "backend"))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
-from common import bus, config, depth, drains, pipeline, routing, social, spots  # noqa: E402
+from common import bus, config, depth, drains, pipeline, routing, simulation, social, spots  # noqa: E402
+from functions.insights import app as insights  # noqa: E402
 from functions.risk_scheduler.app import fetch_rain, risk_of  # noqa: E402
 
 REPORTS: dict[str, dict] = {}
@@ -82,8 +82,6 @@ def refresh_rain():
         except Exception as e:
             print("  rain fetch failed", city, e)
             continue
-        if ARGS.storm:
-            rain = [{"past3h": 32.0, "now": 12.0, "next3h": 20.0} for _ in rain]
         for h, r in zip(hs, rain):
             h.update({"rainPast3h": r["past3h"], "rainNow": r["now"], "rainNext3h": r["next3h"],
                       "risk": risk_of(r), "riskUpdatedAt": int(time.time())})
@@ -91,7 +89,7 @@ def refresh_rain():
         WEATHER[city] = {"rainNow": c["now"], "rainPast3h": c["past3h"], "rainNext3h": c["next3h"],
                          "maxRainNowAtHotspots": max([r["now"] for r in rain] + [0]),
                          "hotspotsAtRisk": sum(1 for h in hs if h["risk"] != "normal"), "updatedAt": int(time.time()),
-                         "source": "Open-Meteo forecast API" + (" (SIMULATED STORM)" if ARGS.storm else "")}
+                         "source": "Open-Meteo forecast API"}
     print("  rain refreshed:", {c: round(w["rainPast3h"], 1) for c, w in WEATHER.items()})
 
 
@@ -125,45 +123,12 @@ def background():
         time.sleep(600)
 
 
-def seed_synthetic(city, n=12):
-    g = graph(city)
-    if not g:
-        return
-    rnd = random.Random(city)
-    roads = [i for i, e in enumerate(g.edges) if e[3] in (1, 2) and e[2] > 60]
-    start = int(datetime.fromisoformat("2025-07-26T18:00:00+05:30").timestamp())
-    pts = [(h["name"], h["lon"], h["lat"], 45 if h["kind"] == "underpass" else 25) for h in HOTSPOTS.get(city, [])[:3]]
-    for i in range(n):
-        c = g.geometry(rnd.choice(roads))
-        lon, lat = c[len(c) // 2]
-        pts.append((f"Synthetic point {i + 1}", lon, lat, rnd.choice([8, 14, 18, 25, 30, 35, 45, 60])))
-    for i, (name, lon, lat, hi) in enumerate(pts):
-        a = depth.normalise({**MOCK, "depth_cm_low": max(hi - 10, 0), "depth_cm_high": hi, "hazards": [],
-                             "reasoning": f"SYNTHETIC test point ({hi} cm). Not a real report.",
-                             "reasoning_hi": "परीक्षण बिंदु। असली रिपोर्ट नहीं।"})
-        rid = f"synth-{city}-{i:03d}"
-        REPORTS[rid] = {"reportId": rid, "city": city, "mode": "demo", "lat": lat, "lon": lon, "place": name,
-                        "ts": start + i * 12 * 60, "createdAt": start + i * 12 * 60, "source_type": "photo",
-                        "source_label": "synthetic", "votes": {}, **pipeline.fields_from_assessment(a)}
-
-
-def seed_drains():
-    """A few labelled demo blockages so the priority list is not empty."""
-    now = int(time.time())
-    for i, (city, name, lat, lon, sev, hrs, rain) in enumerate([
-            ("delhi", "Minto Bridge underpass", 28.6364, 77.2224, "blocked", 5, 28.0),
-            ("delhi", "Demo drain, ITO", 28.6282, 77.2410, "partial", 20, 28.0),
-            ("gurugram", "Demo drain, Hero Honda Chowk", 28.4360, 77.0102, "blocked", 3, 0.0),
-            ("kochi", "Demo drain, MG Road", 9.9816, 76.2830, "partial", 9, 19.0)]):
-        rid = f"demo-drain-{i}"
-        DRAINS[rid] = {"reportId": rid, "city": city, "lat": lat, "lon": lon, "ts": now - hrs * 3600, "status": "open",
-                       "severity": sev, "blockage_type": "garbage", "rainNext24h": rain, "deviceHash": rid, "note": "DEMO DATA",
-                       "reasoning": "DEMO DATA: grating covered by plastic and silt.", "reasoning_hi": "डेमो: जाली प्लास्टिक से ढकी है।",
-                       "confidence": "medium"}
-
-
 def drain_hotspots(city):
     return HOTSPOTS.get(city, [])
+
+
+def spots_for(city, mode, now):
+    return simulation.spots_at(now) if mode == "sim" and city == simulation.CITY else city_spots(city, "live", now)
 
 
 def city_spots(city, mode, now, predicted=True):
@@ -238,27 +203,19 @@ class H(BaseHTTPRequestHandler):
         if u.path.startswith("/me"):
             return self._me("GET", u.path, b"")
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
+        if u.path in ("/rain/india", "/rain/india/posts", "/simulation"):      # same handler the Lambda runs
+            r = insights.handler({"routeKey": f"GET {u.path}", "queryStringParameters": q}, None)
+            return self._send(r["statusCode"], r["body"].encode())
         city = q.get("city", "delhi")
         if u.path == "/spots":
             now = float(q.get("at") or time.time())
-            return self._send(200, {"spots": city_spots(city, q.get("mode", "live"), now), "now": now})
+            return self._send(200, {"spots": spots_for(city, q.get("mode", "live"), now), "now": now})
         if u.path == "/hotspots":
             return self._send(200, {"hotspots": HOTSPOTS.get(city, []), "weather": WEATHER.get(city)})
         if u.path == "/bus-impact":
             now = float(q.get("at") or time.time())
             routes = bus_routes(city)
-            return self._send(200, {"routes_known": len(routes), "affected": bus.impact(routes, city_spots(city, q.get("mode", "live"), now))})
-        if u.path == "/demo/timeline":
-            rs = sorted((r for r in REPORTS.values() if r["mode"] == "demo" and r["city"] == city), key=lambda r: r["ts"])
-            return self._send(200, {"start": rs[0]["ts"] if rs else None, "end": rs[-1]["ts"] if rs else None,
-                                    "reports": [public(r) for r in rs]})
-        if u.path == "/drains":
-            rows = drains.build_groups([r for r in DRAINS.values() if r["city"] == city], drain_hotspots(city))
-            if q.get("status") != "all":
-                rows = [r for r in rows if r["status"] != "cleared"]
-            return self._send(200, {"drains": rows, "now": int(time.time())})
-        if u.path == "/drains/metrics":
-            return self._send(200, drains.metrics([r for r in DRAINS.values() if r["city"] == city], time.time()))
+            return self._send(200, {"routes_known": len(routes), "affected": bus.impact(routes, spots_for(city, q.get("mode", "live"), now))})
         m = re.fullmatch(r"/drains/([\w-]+)", u.path)
         if m and m.group(1) in DRAINS:
             head = DRAINS[m.group(1)]
@@ -394,7 +351,7 @@ class H(BaseHTTPRequestHandler):
             if not g:
                 return self._send(503, {"error": f"No routing graph for {city}. Run scripts/build_graph.py --city {city}"})
             now = float(b.get("at") or time.time())
-            sp = city_spots(city, b.get("mode", "live"), now)
+            sp = spots_for(city, b.get("mode", "live"), now)
             res = routing.plan(g, b["from"], b["to"], b["vehicle"], sp)
             if b.get("compare"):
                 res["compare"] = routing.compare(g, b["from"], b["to"], sp)
@@ -415,15 +372,12 @@ def main():
     ap.add_argument("--social", action="store_true", help="poll live social/news feeds every 10 min")
     ap.add_argument("--bedrock-down", action="store_true", help="simulate Bedrock being unavailable: drains use the labelled fallback")
     ap.add_argument("--unsure", action="store_true", help="mock photo analysis returns an unclear, low-confidence result")
-    ap.add_argument("--storm", action="store_true", help="simulate heavy rain at every hotspot")
     ARGS = ap.parse_args()
     for c in config.CITIES:
         HOTSPOTS[c] = load_hotspots(c)
-        seed_synthetic(c)
-    seed_drains()
     threading.Thread(target=background, daemon=True).start()
-    print(f"Local API on http://localhost:{ARGS.port}  ({len(REPORTS)} synthetic demo reports, live rain"
-          f"{', live social' if ARGS.social else ''}{', SIMULATED STORM' if ARGS.storm else ''})")
+    print(f"Local API on http://localhost:{ARGS.port}  (live rain"
+          f"{', live social' if ARGS.social else ''})")
     ThreadingHTTPServer(("127.0.0.1", ARGS.port), H).serve_forever()
 
 

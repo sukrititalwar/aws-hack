@@ -2,8 +2,7 @@
 
 GET /reports/{id}                       poll a single report
 GET /reports?bbox=..&city=..&since=..   individual reports in the viewport
-GET /spots?bbox=..&city=..&mode=live|demo&at=<epoch>   merged spots (demo replays at `at`)
-GET /demo/timeline?city=..              all archived demo reports with replay times
+GET /spots?bbox=..&city=..                merged live spots (incl. rain-predicted ones)
 """
 import time
 
@@ -19,8 +18,8 @@ def _city(q):
 
 def _mode(q):
     mode = q.get("mode") or "live"
-    if mode not in ("live", "demo"):
-        raise ValueError("mode must be live or demo")
+    if mode != "live":
+        raise ValueError("mode must be live")
     return mode
 
 
@@ -51,19 +50,6 @@ def list_spots(q):
     return http.resp(200, {"spots": db.active_spots(city, mode, _bbox(q, city), now), "now": now})
 
 
-def timeline(q):
-    city = _city(q)
-    items = sorted((i for i in db.query_city(city, "demo") if i.get("status") == "live"),
-                   key=lambda i: i["ts"])
-    reports = [views.public_report(i) for i in items]
-    return http.resp(200, {
-        "city": city,
-        "start": items[0]["ts"] if items else None,
-        "end": items[-1]["ts"] if items else None,
-        "reports": reports,
-    })
-
-
 def handler(event, _ctx):
     route = event.get("routeKey", "")
     q = http.qs(event)
@@ -74,8 +60,6 @@ def handler(event, _ctx):
             return list_reports(q)
         if route == "GET /spots":
             return list_spots(q)
-        if route == "GET /demo/timeline":
-            return timeline(q)
     except ValueError as e:
         return http.bad(str(e))
     return http.bad("not found", 404)

@@ -334,6 +334,7 @@ export default function RoutePanel(p: Props) {
               </div>
             )}
             {note && (sum.cls === "detour" || sum.cls === "bad") && <p className="sum-note">{note}</p>}
+            {p.mode === "sim" && <p className="simwarn" role="note">{L === "hi" ? "यह डेमो रास्ता बनाए गए (नकली) जलभराव के आधार पर है।" : "This demo route was planned around made-up flooding."}</p>}
             <p className="fresh">
               {L === "hi" ? "जाँचा गया" : "Checked"} {clock(r.checked_at)} · {r.spots_considered ?? "–"} {L === "hi" ? "रिपोर्ट इस इलाके में" : `live report${r.spots_considered === 1 ? "" : "s"} in this area`}
             </p>

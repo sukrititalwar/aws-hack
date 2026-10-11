@@ -1,0 +1,172 @@
+{
+ "type": "FeatureCollection",
+ "_note": "verified=true means a news report naming the place was opened and read; osm_match says how the position was checked. Unverified points are not seeded.",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.95243,
+     8.48767
+    ]
+   },
+   "properties": {
+    "hotspotId": "thampanoor",
+    "name": "Thampanoor",
+    "name_hi": "थंपनूर",
+    "kind": "junction",
+    "verified": true,
+    "source_url": "https://keralakaumudi.com/en/kerala/general/77.5-millimetres-of-rain-recorded-within-45-minutes-heavy-thunderstorm-is-likely-says-imd-1501077",
+    "osm_match": "Nominatim: Thampanoor (place=suburb)",
+    "note": "Kerala Kaumudi, 18 Mar 2025 (updated 10 Jul 2025): flooded after 77.5 mm in 45 min",
+    "aliases": [
+     "Thampanoor",
+     "Thampanur"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.94886,
+     8.48299
+    ]
+   },
+   "properties": {
+    "hotspotId": "chalai",
+    "name": "Chalai",
+    "name_hi": "चालै",
+    "kind": "main_road",
+    "verified": true,
+    "source_url": "https://keralakaumudi.com/en/kerala/general/77.5-millimetres-of-rain-recorded-within-45-minutes-heavy-thunderstorm-is-likely-says-imd-1501077",
+    "osm_match": "Nominatim: Chalai Market Road",
+    "note": "Same article: Chalai is named as flooded",
+    "aliases": [
+     "Chalai",
+     "Chala"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.9419,
+     8.49286
+    ]
+   },
+   "properties": {
+    "hotspotId": "vanchiyoor-junction",
+    "name": "Vanchiyoor Junction",
+    "name_hi": "वंचियूर जंक्शन",
+    "kind": "junction",
+    "verified": true,
+    "source_url": "https://keralakaumudi.com/en/kerala/general/77.5-millimetres-of-rain-recorded-within-45-minutes-heavy-thunderstorm-is-likely-says-imd-1501077",
+    "osm_match": "Nominatim: Vanchiyoor Junction (post office)",
+    "note": "Same article: water entered the police station and court premises",
+    "aliases": [
+     "Vanchiyoor",
+     "Vanchiyur"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.88074,
+     8.55783
+    ]
+   },
+   "properties": {
+    "hotspotId": "technopark",
+    "name": "Technopark, Kazhakkoottam",
+    "name_hi": "टेक्नोपार्क, कझाक्कुट्टम",
+    "kind": "main_road",
+    "verified": false,
+    "source_url": "",
+    "osm_match": "Nominatim: Technopark",
+    "note": "Said to have flooded in earlier years, but no article was opened to confirm. Add a citation. Outside the routing area.",
+    "aliases": [
+     "Technopark",
+     "Kazhakoottam",
+     "Kazhakkoottam"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.89705,
+     8.51033
+    ]
+   },
+   "properties": {
+    "hotspotId": "kochuveli",
+    "name": "Kochuveli station",
+    "name_hi": "कोच्चुवेली स्टेशन",
+    "kind": "junction",
+    "verified": false,
+    "source_url": "",
+    "osm_match": "Nominatim: Kochuveli railway station",
+    "note": "No confirmed source yet. Outside the routing area.",
+    "aliases": [
+     "Kochuveli"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.93571,
+     8.49854
+    ]
+   },
+   "properties": {
+    "hotspotId": "pattoor",
+    "name": "Pattoor",
+    "name_hi": "पट्टूर",
+    "kind": "main_road",
+    "verified": false,
+    "source_url": "",
+    "osm_match": "Nominatim: Pattoor (place=suburb)",
+    "note": "No confirmed source yet",
+    "aliases": [
+     "Pattoor"
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     76.94238,
+     8.51861
+    ]
+   },
+   "properties": {
+    "hotspotId": "pattom",
+    "name": "Pattom",
+    "name_hi": "पट्टम",
+    "kind": "main_road",
+    "verified": false,
+    "source_url": "",
+    "osm_match": "Nominatim: Pattom (place=suburb)",
+    "note": "No confirmed source yet",
+    "aliases": [
+     "Pattom"
+    ]
+   }
+  }
+ ]
+}

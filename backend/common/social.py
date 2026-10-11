@@ -46,8 +46,9 @@ OFFICIAL_HANDLES = {
     "kochi": [],                      # add Kochi City Police / district collector handles
     "mumbai": ["MTPHereToHelp"],      # Mumbai Traffic Police
 }
-SUBREDDITS = {"delhi": ["delhi", "newdelhi"], "gurugram": ["gurgaon"], "kochi": ["Kochi", "Kerala"], "mumbai": ["mumbai"]}
-MASTODON_TAGS = {"delhi": ["DelhiRains", "DelhiFloods"], "gurugram": ["GurugramRains", "GurgaonRains"],
+SUBREDDITS = {"delhi": ["delhi", "newdelhi"], "gurugram": ["gurgaon"], "kochi": ["Kochi", "Kerala"], "mumbai": ["mumbai"],
+              "thiruvananthapuram": ["Kerala"]}
+MASTODON_TAGS = {"thiruvananthapuram": ["TrivandrumRains", "KeralaRains"], "delhi": ["DelhiRains", "DelhiFloods"], "gurugram": ["GurugramRains", "GurgaonRains"],
                  "kochi": ["KochiRains", "KeralaRains"], "mumbai": ["MumbaiRains"]}
 
 EXTRACT_PROMPT = """You read one public post or news headline from India and decide whether it reports
@@ -65,6 +66,17 @@ Rules:
 - confidence: high only for official accounts or specific depth words with a specific place."""
 
 
+def city_info(city: str) -> dict:
+    """{label, names} for a supported city or for any city in the India rain list."""
+    if city in config.CITIES:
+        return config.CITIES[city]
+    from . import india_rain
+    c = india_rain.BY_KEY.get(city)
+    if not c:
+        raise KeyError(city)
+    return {"label": c["name"], "names": [c["name"].lower(), *c.get("aka", [])]}
+
+
 def _get(url: str, headers: dict | None = None, timeout=12) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {})})
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -79,7 +91,7 @@ def _post(text, url, ts, source, author="", author_type="public", pid=None):
 # ---------------- fetchers ----------------
 
 def fetch_google_news(city: str, hours: int = 24) -> list[dict]:
-    label = config.CITIES[city]["label"]
+    label = city_info(city)["label"]
     out = []
     for q in (f"waterlogging {label}", f"{label} flooded road underpass", f"{label} rain traffic"):
         url = "https://news.google.com/rss/search?" + urllib.parse.urlencode(
@@ -94,7 +106,7 @@ def fetch_google_news(city: str, hours: int = 24) -> list[dict]:
 
 
 def fetch_bluesky(city: str, hours: int = 24) -> list[dict]:
-    label = config.CITIES[city]["label"]
+    label = city_info(city)["label"]
     since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - hours * 3600))
     out = []
     for q in (f"{label} waterlogging", f"{label} flooded", f"{label} rain underpass"):
@@ -142,7 +154,7 @@ def fetch_x(city: str, hours: int = 24) -> list[dict]:
     token = os.environ.get("X_BEARER_TOKEN")
     if not token:
         return []
-    label = config.CITIES[city]["label"]
+    label = city_info(city)["label"]
     officials = OFFICIAL_HANDLES.get(city, [])
     q = f"({label} OR {' OR '.join('from:' + h for h in officials) or label}) (waterlogging OR waterlogged OR flooded OR underpass) -is:retweet"
     url = "https://api.x.com/2/tweets/search/recent?" + urllib.parse.urlencode(
@@ -163,7 +175,7 @@ def fetch_youtube(city: str, hours: int = 24) -> list[dict]:
         return []
     after = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - hours * 3600))
     url = "https://www.googleapis.com/youtube/v3/search?" + urllib.parse.urlencode(
-        {"part": "snippet", "q": f"{config.CITIES[city]['label']} waterlogging", "type": "video", "order": "date",
+        {"part": "snippet", "q": f"{city_info(city)['label']} waterlogging", "type": "video", "order": "date",
          "publishedAfter": after, "maxResults": 25, "key": key})
     return [_post(f"{i['snippet']['title']}. {i['snippet']['description'][:300]}",
                   f"https://www.youtube.com/watch?v={i['id']['videoId']}", _iso_ts(i["snippet"]["publishedAt"]),
@@ -174,17 +186,25 @@ def fetch_youtube(city: str, hours: int = 24) -> list[dict]:
 FETCHERS = [fetch_google_news, fetch_bluesky, fetch_mastodon, fetch_reddit, fetch_x, fetch_youtube]
 
 
-def fetch_all(city: str, hours: int = 24) -> tuple[list[dict], dict]:
+def fetch_all(city: str, hours: int = 24, budget_s: float = 18.0) -> tuple[list[dict], dict]:
+    """All sources in parallel, with an overall time budget so one slow site cannot stall the caller."""
+    from concurrent.futures import ThreadPoolExecutor, wait
     posts, stats = [], {}
-    for f in FETCHERS:
-        name = f.__name__.replace("fetch_", "")
+    ex = ThreadPoolExecutor(max_workers=len(FETCHERS))
+    futs = {ex.submit(f, city, hours): f.__name__.replace("fetch_", "") for f in FETCHERS}
+    done, pending = wait(futs, timeout=budget_s)
+    for fut in done:
+        name = futs[fut]
         try:
-            got = f(city, hours)
+            got = fut.result()
             stats[name] = len(got)
             posts.extend(got)
         except Exception as e:  # one broken source must not stop the others
             stats[name] = f"error: {type(e).__name__}"
             log.warning("source %s failed for %s: %s", name, city, e)
+    for fut in pending:
+        stats[futs[fut]] = "error: timeout"
+    ex.shutdown(wait=False, cancel_futures=True)
     seen, uniq = set(), []
     for p in posts:
         k = p["id"] or hashlib.sha1(p["text"].encode()).hexdigest()
@@ -207,7 +227,7 @@ def prefilter(posts: list[dict], city: str, hotspots: list[dict], max_age_h: flo
     """Cheap filter before any model call: recent + waterlogging words + mentions this city or
     one of its hotspots."""
     now = now or time.time()
-    names = [n.lower() for n in config.CITIES[city]["names"]]
+    names = [n.lower() for n in city_info(city)["names"]]
     out = []
     for p in posts:
         t = p["text"].lower()
@@ -226,7 +246,7 @@ def _bedrock():
 
 def extract(post: dict, city: str) -> dict:
     """Bedrock text extraction (deterministic by prompt: no sampling parameters are sent)."""
-    msg = f"City: {config.CITIES[city]['label']}. Source: {post['source']} ({post['author_type']}). Post: {post['text']}"
+    msg = f"City: {city_info(city)['label']}. Source: {post['source']} ({post['author_type']}). Post: {post['text']}"
     r = depth.converse(modelId=config.SOCIAL_MODEL_ID, system=[{"text": EXTRACT_PROMPT}],
                        messages=[{"role": "user", "content": [{"text": msg}]}],
                        inferenceConfig=depth.inference_config(400))
@@ -350,3 +370,25 @@ def to_report(post: dict, ext: dict, loc, city: str, mode: str = "live", ts: flo
         "votes": {"still": 0, "cleared": 0, "wrong": 0}, "extraction": ext,
         "expiresAt": int(t) + config.EXPIRE_AFTER_H * 3600 if mode == "live" else None,
     }
+
+
+_posts_cache: dict = {}
+
+
+def live_posts(city: str, hours: float = 24, limit: int = 12, ttl: int = 600) -> dict:
+    """Recent public posts and news about rain / waterlogging in a city, newest first. Works for any
+    city in the India rain list. No model call: keyword + city + recency filter, with a link to the
+    source (we show a short snippet, never the whole article)."""
+    hit = _posts_cache.get(city)
+    if hit and time.time() - hit[0] < ttl:
+        return hit[1]
+    posts, stats = fetch_all(city, hours=int(hours))
+    keep = prefilter(posts, city, [], max_age_h=hours)
+    keep.sort(key=lambda p: -p["ts"])
+    out = [{"id": p["id"], "text": p["text"][:220] + ("…" if len(p["text"]) > 220 else ""), "ts": int(p["ts"]), "url": p["url"],
+            "source": p["source"], "author": p["author"] if p["author_type"] in ("official", "news") else "Public post",
+            "author_type": p["author_type"]} for p in keep[:limit]]
+    res = {"city": city, "label": city_info(city)["label"], "hours": hours, "posts": out,
+           "sources_checked": stats, "checkedAt": int(time.time())}
+    _posts_cache[city] = (time.time(), res)
+    return res

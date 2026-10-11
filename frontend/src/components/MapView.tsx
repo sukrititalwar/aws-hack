@@ -2,44 +2,15 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 import { mapStyle } from "../api";
-import { VERDICT_UI, vehicleInfo, type Lang } from "../i18n";
-import type { CoverageArea, Hotspot, LonLat, RouteResult, Spot, Vehicle } from "../types";
+import type { MapProps } from "./mapProps";
+import { endpointElement, hotspotElement, rainElement, spotElement } from "./markers";
+import type { LonLat } from "../types";
 
-interface Props {
-  center: LonLat;
-  spots: Spot[];
-  hotspots: Hotspot[];
-  vehicle: Vehicle;
-  lang: Lang;
-  route: RouteResult | null;
-  altRoute?: GeoJSON.LineString | null;
-  from?: LonLat | null;
-  to?: LonLat | null;
-  picking: boolean;
-  dark: boolean;
-  coverage?: CoverageArea[] | null;
-  onSpot: (s: Spot) => void;
-  onHotspot: (h: Hotspot) => void;
-  onPick: (p: LonLat) => void;
+interface Props extends MapProps {
   onReady?: (m: maplibregl.Map) => void;
 }
 
 const EMPTY: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
-
-// Lucide paths (check, x, cloud-rain, shield, message-circle) as strings, because markers are plain DOM.
-const svg = (body: string, size = 16) =>
-  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
-const PIN_GLYPH: Record<string, string> = {
-  go: svg('<path d="M20 6 9 17l-5-5"/>'),
-  nogo: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
-  risky: "!",
-  inspect: "?",
-};
-const BADGE = {
-  rain: svg('<path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/>', 11),
-  official: svg('<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>', 11),
-  social: svg('<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>', 11),
-};
 
 export default function MapView(p: Props) {
   const el = useRef<HTMLDivElement>(null);
@@ -47,6 +18,8 @@ export default function MapView(p: Props) {
   const spotMarkers = useRef<maplibregl.Marker[]>([]);
   const hotMarkers = useRef<maplibregl.Marker[]>([]);
   const pinMarkers = useRef<maplibregl.Marker[]>([]);
+  const rainMarkers = useRef<maplibregl.Marker[]>([]);
+  const hadBounds = useRef(false);
   const cb = useRef(p);
   cb.current = p;
 
@@ -99,25 +72,8 @@ export default function MapView(p: Props) {
     const m = map.current;
     if (!m) return;
     spotMarkers.current.forEach((x) => x.remove());
-    spotMarkers.current = p.spots.map((s) => {
-      const v = s.verdicts[p.vehicle];
-      // A GO we are not sure about is drawn as "?" (requires inspection), never as a green tick.
-      const unsure = v === "GO" && !!s.needs_inspection;
-      const ui = unsure ? { cls: "risky", glyph: "?", en: "Requires inspection", hi: "" } : VERDICT_UI[v];
-      const size = Math.min(30 + (s.reportCount - 1) * 6, 54);
-      const btn = document.createElement("button");
-      btn.className = `pin ${ui.cls}${s.faded ? " faded" : ""}${s.danger ? " danger" : ""}${s.predicted ? " predicted" : ""}`;
-      btn.style.width = btn.style.height = `${size}px`;
-      const badge = s.predicted ? BADGE.rain : s.sources.includes("official") ? BADGE.official : s.sources.includes("social") ? BADGE.social : "";
-      btn.innerHTML = `<span>${unsure ? PIN_GLYPH.inspect : PIN_GLYPH[ui.cls]}</span>${s.reportCount > 1 ? `<b>${s.reportCount}</b>` : ""}${badge ? `<i>${badge}</i>` : ""}`;
-      const veh = vehicleInfo(p.vehicle);
-      btn.setAttribute("aria-label", `${s.place ?? "Flooded spot"}: ${s.predicted ? "predicted from rain, " : ""}about ${s.depth_high} cm. ${veh.en}: ${ui.en}.`);
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        cb.current.onSpot(s);
-      };
-      return new maplibregl.Marker({ element: btn }).setLngLat([s.lon, s.lat]).addTo(m);
-    });
+    spotMarkers.current = p.spots.map((s) =>
+      new maplibregl.Marker({ element: spotElement(s, p.vehicle, (x) => cb.current.onSpot(x)) }).setLngLat([s.lon, s.lat]).addTo(m));
   }, [p.spots, p.vehicle]);
 
   // ---- chronic hotspots: hollow rings ----
@@ -125,18 +81,31 @@ export default function MapView(p: Props) {
     const m = map.current;
     if (!m) return;
     hotMarkers.current.forEach((x) => x.remove());
-    hotMarkers.current = p.hotspots.map((h) => {
-      const d = document.createElement("button");
-      d.className = `ring${h.risk === "likely_flooded_soon" ? " soon" : h.risk === "flooding_likely_now" ? " now" : ""}`;
-      d.setAttribute("aria-label", `${h.name}: usually floods in heavy rain${h.risk !== "normal" ? " (rain warning)" : ""}`);
-      d.title = p.lang === "hi" ? h.name_hi ?? h.name : h.name;
-      d.onclick = (e) => {
-        e.stopPropagation();
-        cb.current.onHotspot(h);
-      };
-      return new maplibregl.Marker({ element: d }).setLngLat([h.lon, h.lat]).addTo(m);
-    });
+    hotMarkers.current = p.hotspots.map((h) =>
+      new maplibregl.Marker({ element: hotspotElement(h, p.lang, (x) => cb.current.onHotspot(x)) }).setLngLat([h.lon, h.lat]).addTo(m));
   }, [p.hotspots, p.lang]);
+
+  // ---- rain dots + "show all of India" view ----
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    rainMarkers.current.forEach((x) => x.remove());
+    rainMarkers.current = (p.rainPoints ?? []).map((c) =>
+      new maplibregl.Marker({ element: rainElement(c, (x) => cb.current.onRainPoint?.(x)) }).setLngLat([c.lon, c.lat]).addTo(m));
+  }, [p.rainPoints]);
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    if (p.viewBounds) {
+      const [w, s, e, n] = p.viewBounds;
+      const wide = window.innerWidth >= 760;
+      m.fitBounds([[w, s], [e, n]], { padding: { top: 130, bottom: wide ? 40 : Math.round(window.innerHeight * 0.5) + 10, left: 20, right: wide ? 440 : 20 }, duration: 700, maxZoom: 6 });
+      hadBounds.current = true;
+    } else if (hadBounds.current) {
+      hadBounds.current = false;
+      m.flyTo({ center: cb.current.center, zoom: 13, duration: 700 });
+    }
+  }, [p.viewBounds]);
 
   // ---- from/to pins ----
   useEffect(() => {
@@ -146,10 +115,7 @@ export default function MapView(p: Props) {
     pinMarkers.current = [];
     ([["from", p.from], ["to", p.to]] as const).forEach(([kind, pos]) => {
       if (!pos) return;
-      const d = document.createElement("div");
-      d.className = `endpoint ${kind}`;
-      d.textContent = kind === "from" ? "A" : "B";
-      pinMarkers.current.push(new maplibregl.Marker({ element: d }).setLngLat(pos).addTo(m));
+      pinMarkers.current.push(new maplibregl.Marker({ element: endpointElement(kind) }).setLngLat(pos).addTo(m));
     });
   }, [p.from, p.to]);
 

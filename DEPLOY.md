@@ -52,8 +52,8 @@ Note **ApiUrl**, **PhotosBucketName**, **HotspotsTableName**, **ReportsTableName
 ## 3. Data
 ```bash
 export BUCKET=<PhotosBucketName> HOTSPOTS=<HotspotsTableName>
-for c in delhi gurugram kochi; do .venv/bin/python scripts/build_graph.py --city $c --bucket $BUCKET; done
-for c in delhi gurugram kochi; do .venv/bin/python scripts/seed_hotspots.py --city $c --table $HOTSPOTS; done
+for c in delhi gurugram kochi thiruvananthapuram; do .venv/bin/python scripts/build_graph.py --city $c --bucket $BUCKET; done
+for c in delhi gurugram kochi thiruvananthapuram; do .venv/bin/python scripts/seed_hotspots.py --city $c --table $HOTSPOTS; done
 # optional, Delhi buses (DTC GTFS from https://mobilitydatabase.org/feeds/gtfs/mdb-3139):
 .venv/bin/python scripts/import_gtfs.py --city delhi --gtfs ~/Downloads/delhi-bus.zip --bucket $BUCKET
 # first live rain check now instead of waiting 15 min:
@@ -99,6 +99,18 @@ AWS-native alternative: AWS End User Messaging Social → link a WhatsApp Busine
 ## 7. DrainReady
 Reporting needs no setup. Dispatchers open **🕳️ Blocked drains**, tap a blockage, expand **Dispatcher**, paste the **AdminToken**, then assign a worker and upload the after-photo. The drain is only marked cleared if the after-photo shows a clear drain. Check the numbers on the **Impact** tab. Local test: run `scripts/local_api.py` (access code `demo`).
 
+## 7a. Rain across India and the live cities
+- **Rain across India now:** tap the rain pill in the toolbar. `GET /rain/india` reads Open-Meteo for ~50 cities (cached 5 min). It is model data, not rain-gauge readings, and says so. Tapping a city shows its recent news and social posts (`GET /rain/india/posts`: Google News, Bluesky, Mastodon, plus Reddit/X/YouTube if keys are set). On a calm day it correctly reports that nothing was found.
+- **Thiruvananthapuram** is a full live city (road graph, cited hotspots, rain scheduler and social ingest). After `sam deploy`, run `build_graph.py --city thiruvananthapuram --bucket $BUCKET` and `seed_hotspots.py --city thiruvananthapuram --table $HOTSPOTS` (only the three hotspots with a citation are seeded). Add another live city by adding it to `config.CITIES`, `AREAS` in `build_graph.py`, and a hotspot file.
+
+## 7b. Google Maps basemap (optional)
+Set **`VITE_GOOGLE_MAPS_API_KEY`** to show Google's map instead of Amazon Location / OpenStreetMap. Pins, routes and panels are identical. Google's tiles can only be used through Google's own SDK, so this is a separate map component (`GoogleMapView`) chosen automatically when the key is set; if Google cannot load or rejects the key the app falls back to the other map and says why.
+1. [Google Cloud console](https://console.cloud.google.com/google/maps-apis/) → pick or create a project and **enable billing** (Maps has a free monthly allowance, but billing must be on).
+2. **APIs & Services → Library → "Maps JavaScript API" → Enable.**
+3. **Credentials → Create credentials → API key**, then restrict it: *Websites* (HTTP referrers) = `https://main.<id>.amplifyapp.com/*` and `http://localhost:5173/*`, and *API restrictions* = Maps JavaScript API only. The key ships in the page, so the restrictions are what protect it.
+4. Amplify → environment variables → `VITE_GOOGLE_MAPS_API_KEY`, redeploy. Locally: put it in `frontend/.env.local`.
+Notes: Google's logo and terms stay visible (the map stops above the button row on phones). Address search still uses Amazon Location Places. Using Google for the basemap means the map no longer uses Amazon Location (the rest of the app is still on AWS).
+
 ## 8. Sign-in and saved places (Amazon Cognito)
 The stack creates a Cognito user pool and a web app client. After `sam deploy`:
 ```bash
@@ -129,11 +141,9 @@ sam logs --stack-name scooter-cross -n AnalyzeFunction --tail
 ---
 
 ## What's left before submission (11 Oct, 08:00 IST)
-- [ ] **Demo photos**: 15–25 real past-monsoon photos you're allowed to use → `data/demo_photos/` + rows in `data/demo_photos.csv` (lat, lon, replay time, source, licence) → `scripts/seed_demo.py --bucket $BUCKET --table <ReportsTableName>`.
-- [ ] **Demo social posts**: 40–80 real public posts from a past heavy-rain day → `data/social_demo_<city>.jsonl` → `scripts/seed_social.py --city delhi --demo --table <ReportsTableName>`.
 - [ ] **Accuracy numbers**: 20–30 photos with known depth in `data/eval_set.csv` → `cd backend && ../.venv/bin/python -m tests.eval_depth` → paste the numbers into the README.
 - [ ] **Hotspots**: add citations for Pragati Maidan tunnel, Moolchand and ITO (`verified: false` now), and verify Gurugram/Kochi police handles in `backend/common/social.py` (`OFFICIAL_HANDLES`).
-- [ ] **Video (3 min)**: problem → photo verdict (EN + HI) → Kochi live rain banner → Delhi demo replay → "scooter detours, bus goes" comparison → WhatsApp report → AWS architecture + accuracy numbers.
+- [ ] **Video (3 min)**: problem → photo verdict (EN + HI) → Kochi live rain banner → India rain view → "scooter detours, bus goes" comparison → WhatsApp report → AWS architecture + accuracy numbers.
 - [ ] Optional: AWS Builder Center blog post.
 
 ## Cost + teardown

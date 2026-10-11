@@ -1,7 +1,7 @@
 export type Vehicle = "pedestrian" | "bicycle" | "scooter" | "ev_scooter" | "auto" | "car" | "suv" | "bus" | "ambulance";
 export type Verdict = "GO" | "RISKY" | "NO_GO";
 export type LonLat = [number, number];
-export type Mode = "live" | "demo";
+export type Mode = "live" | "sim";
 
 export type Category = "passable" | "potentially_unsafe" | "unsafe" | "requires_inspection";
 
@@ -75,6 +75,7 @@ export interface Spot {
   source_url?: string;
   source_urls?: string[];
   verification?: "predicted" | "single_report" | "confirmed" | "official";
+  simulated?: boolean;
 }
 
 export interface Hotspot {
@@ -101,6 +102,7 @@ export interface Weather {
   hotspotsAtRisk: number;
   updatedAt: number;
   source: string;
+  simulated?: boolean;
 }
 
 export interface CompareRow {
@@ -209,4 +211,55 @@ export interface DrainMetrics {
   cleared_before_rain: number;
   repeat_blockages: number;
   basis: string;
+}
+
+export type RainLevel = "dry" | "light" | "moderate" | "heavy" | "extreme";
+export interface RainCity {
+  key: string;
+  name: string;
+  state: string;
+  lat: number;
+  lon: number;
+  now: number;      // mm/h right now
+  past3h: number;   // mm
+  next6h: number;   // mm (forecast)
+  level: RainLevel;
+  supported: boolean;   // a fully live city in this app (road graph, hotspots, social ingest)
+}
+export interface RainIndia {
+  updatedAt: number;
+  cities: RainCity[];
+  summary: { counts: Record<string, number>; raining: number; checked: number; headline: string; wettest: string[] };
+  source: string;
+}
+export interface LivePost {
+  id: string;
+  text: string;
+  ts: number;
+  url: string | null;
+  source: string;
+  author: string;
+  author_type: string;
+  place?: string | null;
+  simulated?: boolean;
+}
+export interface LivePosts {
+  city: string;
+  label: string;
+  hours: number;
+  posts: LivePost[];
+  sources_checked: Record<string, number | string>;
+  checkedAt: number;
+}
+
+/** The DEMO storm: every value is made up (see backend/common/simulation.py). */
+export interface SimPayload {
+  simulation: true;
+  disclaimer: string;
+  scenario: { city: string; area: string; start: number; end: number; name: string };
+  now: number;
+  spots: Spot[];
+  weather: Weather;
+  posts: LivePost[];
+  drains: { groupId: string; note?: string; severity: string; status: string; reportCount: number; score: number; reasons: string[]; assignedTo?: string | null }[];
 }

@@ -1,7 +1,6 @@
 import { Pause, Play } from "lucide-react";
 import { useEffect } from "react";
 import { t, type Lang } from "../i18n";
-import { fmtTime } from "../util";
 
 interface Props {
   start: number;
@@ -12,11 +11,12 @@ interface Props {
   setPlaying: (b: boolean) => void;
   lang: Lang;
   count: number;
+  simulated?: boolean;
 }
 
 const STEP_S = 5 * 60; // each tick advances 5 minutes of the archived evening
 
-export default function DemoBar({ start, end, at, setAt, playing, setPlaying, lang, count }: Props) {
+export default function DemoBar({ start, end, at, setAt, playing, setPlaying, lang, count, simulated }: Props) {
   useEffect(() => {
     if (!playing) return;
     const id = setInterval(() => {
@@ -34,9 +34,9 @@ export default function DemoBar({ start, end, at, setAt, playing, setPlaying, la
       </button>
       <div className="demo-main">
         <div className="demo-time">
-          <strong>{fmtTime(at)}</strong> <span className="muted small">· {count} {lang === "hi" ? "जगहें" : "spots"}</span>
+          <strong>{new Date(at * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</strong>{simulated && <span className="simtag inline">DEMO</span>} <span className="muted small">· {count} {lang === "hi" ? "जगहें" : "spots"}</span>
         </div>
-        <input type="range" min={start} max={end} step={60} value={at} aria-label="Replay time"
+        <input type="range" min={start} max={end} step={60} value={at} aria-label={t("demo", lang)}
           onChange={(e) => { setPlaying(false); setAt(Number(e.target.value)); }} />
       </div>
     </div>

@@ -12,10 +12,12 @@ At the edge of a waterlogged road, people ask one question: *"Can MY vehicle cro
 |---|---|
 | 📷 **Photo → verdict** | Amazon Bedrock (Claude vision) estimates depth from kerbs, tyres and legs. A deterministic, unit-tested rules engine (not the AI) gives GO / RISKY / NO-GO for walking, cycle, petrol scooter, EV scooter, auto, car, SUV, bus and ambulance. |
 | 💬 **WhatsApp reporting** | Send a photo + location to the WhatsApp number and get the verdict back on WhatsApp, no app needed. Send a location for nearby flooded spots, or a place name ("Minto Bridge") for its status. Twilio sandbox, or AWS End User Messaging Social. |
+| 🇮🇳 **Where is it raining in India now** | Tap the rain pill: live rainfall at ~50 cities (Open-Meteo), dots on a map of India, honest headline ("no heavy rain right now" on a calm day), and recent news and social posts for any city you tap. Fully supported live cities: Delhi, Gurugram, Kochi, Thiruvananthapuram, Mumbai. |
 | 🌧 **Real-time rain** | Every 15 min, live rainfall at every chronic hotspot (Open-Meteo). Heavy rain turns a hotspot into a **predicted** spot (low confidence, so verdicts are stricter) until a real report confirms or replaces it, and sends SNS alerts. |
 | 📰 **Social media + news** | Every 10 min, Google News, Bluesky and Mastodon (no keys), plus Reddit, X and YouTube if keys are set. Bedrock extracts place, depth words and closures. Amazon Location geocodes. Official closures = NO-GO for all. |
 | ✅ **Ground truth** | Chronic hotspots for Delhi, Gurugram and Kochi, each **cited to a news report** and **position-checked against OpenStreetMap** (`data/hotspots_*.geojson`). Every spot shows its level: 🌧 predicted → 📷 AI estimate → ✔ confirmed by several reports → 🛡 official. |
 | 🕳️ **DrainReady** | Residents photograph a blocked drain. Bedrock classifies it as clear / partly / fully blocked. Duplicates within 30 m are grouped. Blockages are ranked by severity × number of reporters × 24 h rain forecast × nearness to a known flood spot. A dispatcher assigns a worker, and a drain is only marked cleared when the **after-photo itself shows a clear drain**. Impact: cleared before rain, median hours to clear, repeat blockages. **Reliable by design:** if Bedrock is unavailable the report is kept and rated from basic image labels, clearly labelled "AI analysis unavailable / needs review"; a drain is never auto-cleared without verification (a dispatcher confirms manually, recorded as such); stuck analyses show an error with a Retry button instead of failing silently. |
+| 🗺️ **Map** | Amazon Location (or OpenStreetMap) by default; set `VITE_GOOGLE_MAPS_API_KEY` to use the Google Maps basemap with the same pins and routes, falling back automatically if Google is unavailable. |
 | 👤 **Sign in + saved places** | Amazon Cognito email sign-in (confirmation code, forgot password). Save Home, Work and other addresses and use them in one tap when planning a route. API Gateway verifies the Cognito token itself, and every place is keyed by the signed-in user. |
 | 🧭 **Safe route + "who can still go?"** | One trip, six vehicle profiles, including separate petrol and EV scooters. *"Scooter must detour (+2 min), car can take the usual road slowly, bus OK."* Tap a vehicle to see its route. Lanes included; buses stay on bus-capable roads. |
 | 🚌 **Buses** | Bus routes passing a flooded spot (likely diverted), and stops that are unsafe to walk to. From the official GTFS (Delhi DTC/cluster) or OSM. |
@@ -78,7 +80,7 @@ OSMnx `all` network, minus private gated-society roads, parking aisles and drive
 ### Local, no AWS
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r scripts/requirements.txt
-.venv/bin/python scripts/local_api.py --social           # live rain + live social feeds; add --storm to simulate heavy rain
+.venv/bin/python scripts/local_api.py --social           # live rain + live social feeds
 cd frontend && npm install && cp .env.example .env.local  # set VITE_API_URL=http://localhost:8787
 npm run dev
 .venv/bin/python scripts/seed_social.py --city delhi --dry-run --no-llm --hours 48   # what's being posted now
@@ -87,7 +89,7 @@ cd backend && ../.venv/bin/python -m pytest -q           # 67 tests
 ### Deploy
 ```bash
 sam build && sam deploy --guided       # region ap-south-1; set AppUrl, optionally RedditClientId/Secret, YouTubeApiKey, XBearerToken
-for c in delhi gurugram kochi; do
+for c in delhi gurugram kochi thiruvananthapuram; do
   python scripts/build_graph.py --city $c --bucket <PhotosBucketName>
   python scripts/seed_hotspots.py --city $c --table <HotspotsTableName>
 done
@@ -104,11 +106,18 @@ Set `VITE_WHATSAPP_NUMBER=14155238886` and `VITE_WHATSAPP_JOIN="join <your-sandb
 
 **AWS End User Messaging Social (AWS-native):** link a WhatsApp Business Account in the console, pick an SNS topic for events, and deploy with `WhatsAppTopicArn=<that topic>`.
 
+## Demo mode
+
+The **Demo** switch (top bar) shows a made-up heavy-rain evening in central Delhi (Minto Bridge, ITO, Pragati Maidan, Moolchand, Ashram) with a time slider, so the app can be shown on a dry day.
+**Every value in it is invented** (`backend/common/simulation.py`): the depths, reports, posts and rain are not real, and the screen says so (a DEMO banner and DEMO tags on every pin, post and figure).
+The logic is real: verdicts come from the same rules, spots are merged by the same code, and routes are planned by the same router. Nothing from the demo is written to the database or can trigger an alert.
+Endpoint: `GET /simulation?at=<epoch>`; routes: `POST /route` with `"mode": "sim"`.
+
 ## Limitations
 - Depth from one photo is an estimate. We always show the range, confidence, evidence and a disclaimer ("If unsure, don't cross. Emergency: 112").
-- Delhi and Gurugram are dry in October. Use demo replay (`seed_demo.py`, `seed_social.py --demo`) to show a past heavy-rain day. Kochi has live rain during the north-east monsoon.
+- The app shows only live data. Delhi and Gurugram are dry in October, so live pins there appear only when it rains and people report. Southern Kerala is the wettest region during the north-east monsoon, and the India rain view shows where it is raining at any moment.
 - Gurugram and Kochi have no open bus GTFS. OSM bus relations are used if present.
 - The X API is paid, so it's off unless a token is provided. Reddit needs free OAuth app credentials.
 
 ## Credits
-Map data © OpenStreetMap contributors (ODbL). Rain: Open-Meteo (CC BY 4.0). Delhi bus GTFS: Delhi Transport Dept / OTD. Hotspot sources: The Week/PTI, Tribune, ETV Bharat, LG Delhi, Kerala Kaumudi, The News Minute, Onmanorama (links in the geojson files). Photo credits: `data/demo_photos.csv`.
+Map data © OpenStreetMap contributors (ODbL). Rain: Open-Meteo (CC BY 4.0). Delhi bus GTFS: Delhi Transport Dept / OTD. Hotspot sources: The Week/PTI, Tribune, ETV Bharat, LG Delhi, Kerala Kaumudi, The News Minute, Onmanorama (links in the geojson files).

@@ -1,11 +1,12 @@
 import type { StyleSpecification } from "maplibre-gl";
-import type { BusImpact, DrainMetrics, DrainRow, Hotspot, LonLat, Mode, PlaceKind, Report, RouteResult, SavedPlace, Spot, Vehicle, Weather } from "./types";
+import type { BusImpact, DrainMetrics, DrainRow, Hotspot, LivePosts, LonLat, Mode, PlaceKind, RainIndia, Report, RouteResult, SavedPlace, SimPayload, Spot, Vehicle, Weather } from "./types";
 
 export const API = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 export const CITIES: Record<string, { label: string; hi: string; center: LonLat }> = {
   delhi: { label: "Delhi", hi: "दिल्ली", center: [77.232, 28.61] },
   gurugram: { label: "Gurugram", hi: "गुरुग्राम", center: [77.05, 28.46] },
   kochi: { label: "Kochi", hi: "कोच्चि", center: [76.29, 9.98] },
+  thiruvananthapuram: { label: "Thiruvananthapuram", hi: "तिरुवनंतपुरम", center: [76.95, 8.5] },
   mumbai: { label: "Mumbai", hi: "मुंबई", center: [72.8475, 19.105] },
 };
 /** Current city; App calls setCity() when the user switches. */
@@ -109,12 +110,20 @@ export const api = {
   spots: (mode: Mode, at?: number) =>
     call<{ spots: Spot[]; now: number }>(`/spots?city=${CITY}&mode=${mode}${at ? `&at=${Math.round(at)}` : ""}`),
 
+  /** Live rainfall at ~50 Indian cities (Open-Meteo, cached 5 min server-side). */
+  rainIndia: () => call<RainIndia>("/rain/india", { timeoutMs: 25000 }),
+  /** Recent public posts and news about rain / waterlogging in a city (any city in the India list). */
+  rainPosts: (city: string) => call<LivePosts>(`/rain/india/posts?city=${city}`, { timeoutMs: 30000 }),
+
+
+  /** DEMO storm snapshot at time `at` (made-up values, never real reports). */
+  simulation: (at?: number) => call<SimPayload>(`/simulation${at ? `?at=${Math.round(at)}` : ""}`),
+
   hotspots: () => call<{ hotspots: Hotspot[]; weather: Weather | null }>(`/hotspots?city=${CITY}`),
 
   busImpact: (mode: Mode, at?: number) =>
     call<BusImpact>(`/bus-impact?city=${CITY}&mode=${mode}${at ? `&at=${Math.round(at)}` : ""}`),
 
-  timeline: () => call<{ start: number | null; end: number | null; reports: Report[] }>(`/demo/timeline?city=${CITY}`),
 
   vote: (id: string, type: "still_flooded" | "cleared" | "wrong", deviceId: string) =>
     call<{ votes: Report["votes"] }>(`/reports/${id}/vote`, { method: "POST", body: JSON.stringify({ type, deviceId }) }),
@@ -122,7 +131,7 @@ export const api = {
   route: (from: LonLat, to: LonLat, vehicle: Vehicle, mode: Mode, at?: number) =>
     call<RouteResult>("/route", {
       method: "POST",
-      body: JSON.stringify({ from, to, vehicle, city: CITY, mode, compare: true, at: mode === "demo" ? Math.round(at ?? 0) : undefined }),
+      body: JSON.stringify({ from, to, vehicle, city: CITY, mode, compare: true, at: mode !== "live" ? Math.round(at ?? 0) : undefined }),
       timeoutMs: 15000,
     }),
 

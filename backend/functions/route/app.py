@@ -1,4 +1,4 @@
-"""POST /route  {from:[lon,lat], to:[lon,lat], vehicle, city?, mode?: live|demo, at?: epoch, compare?: bool}
+"""POST /route  {from:[lon,lat], to:[lon,lat], vehicle, city?, compare?: bool}
     -> normal + flood-safe route for the vehicle, and (compare) the same trip for scooter, auto,
        car, SUV and bus: who can still take the usual road, who must detour, who is stuck.
 GET /bus-impact?city=..&mode=..&at=..
@@ -12,7 +12,7 @@ import logging
 import os
 import time
 
-from common import bus, config, db, geo, http, routing, views
+from common import bus, config, db, geo, http, routing, simulation, views
 
 log = logging.getLogger()
 _GRAPHS: dict = {}
@@ -53,11 +53,13 @@ def bus_impact(event):
     q = http.qs(event)
     city = (q.get("city") or "delhi").lower()
     mode = q.get("mode") or "live"
-    if city not in config.CITIES or mode not in ("live", "demo"):
+    if city not in config.CITIES or mode not in ("live", "sim"):
         return http.bad("bad city or mode")
+    if mode == "sim" and city != simulation.CITY:
+        return http.bad("The simulation covers Delhi only.")
     now = float(q.get("at") or time.time())
     routes = load_bus(city)
-    spots = db.active_spots(city, mode, config.CITIES[city]["bbox"], now)
+    spots = simulation.spots_at(now) if mode == "sim" else db.active_spots(city, mode, config.CITIES[city]["bbox"], now)
     return http.resp(200, {"routes_known": len(routes), "affected": bus.impact(routes, spots), "now": now})
 
 
@@ -77,8 +79,10 @@ def handler(event, _ctx):
         return http.bad("from/to must be [lon, lat]")
     if vehicle not in config.VEHICLES:
         return http.bad(f"vehicle must be one of {config.VEHICLES}")
-    if city not in config.CITIES or mode not in ("live", "demo"):
+    if city not in config.CITIES or mode not in ("live", "sim"):
         return http.bad("bad city or mode")
+    if mode == "sim" and city != simulation.CITY:
+        return http.bad("The simulation covers Delhi only.")
     frm, to = [float(x) for x in frm], [float(x) for x in to]
     # A point in another city (e.g. "my location" while away) would make the flood-spot lookup span
     # hundreds of km; say so plainly instead of failing.
@@ -95,7 +99,7 @@ def handler(event, _ctx):
     bbox = [min(frm[0], to[0]) - BBOX_MARGIN_DEG, min(frm[1], to[1]) - BBOX_MARGIN_DEG,
             max(frm[0], to[0]) + BBOX_MARGIN_DEG, max(frm[1], to[1]) + BBOX_MARGIN_DEG]
     now = float(b.get("at") or time.time())
-    spots = db.active_spots(city, mode, bbox, now)
+    spots = simulation.spots_at(now) if mode == "sim" else db.active_spots(city, mode, bbox, now)
 
     t0 = time.time()
     try:

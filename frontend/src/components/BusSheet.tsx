@@ -10,7 +10,7 @@ export default function BusSheet({ mode, at, lang, onClose }: { mode: Mode; at?:
   const [data, setData] = useState<BusImpact | null>(null);
   const [err, setErr] = useState("");
   useEffect(() => {
-    api.busImpact(mode, mode === "demo" ? at : undefined).then(setData).catch((e) => setErr(String(e.message ?? e)));
+    api.busImpact(mode, mode !== "live" ? at : undefined).then(setData).catch((e) => setErr(String(e.message ?? e)));
   }, [mode, at]);
 
   return (

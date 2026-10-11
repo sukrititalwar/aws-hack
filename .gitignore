@@ -29,7 +29,7 @@ frontend/.env.*.local
 *.pem
 
 # Data caches
-data/demo_cache/
+data/eval_cache/
 cache/
 
 # Editors / OS / scratch

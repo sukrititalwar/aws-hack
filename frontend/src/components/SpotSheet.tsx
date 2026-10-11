@@ -38,7 +38,7 @@ export default function SpotSheet({ spot, mode, known, vehicle, lang, setLang, o
 
   useEffect(() => {
     setVoteMsg("");
-    if (!latestId) return setReport(null); // predicted spot: no report yet
+    if (!latestId || spot.simulated) return setReport(null); // predicted or demo spot: no stored report
     const k = known.get(latestId);
     if (k) return setReport(k);
     setReport(null);
@@ -59,8 +59,8 @@ export default function SpotSheet({ spot, mode, known, vehicle, lang, setLang, o
       <div>
         <h2>{spot.place ?? (lang === "hi" ? "पानी भराव" : "Flooded spot")}</h2>
         <p className="muted small">
-          <VerifyBadge spot={spot} lang={lang} />{" "}
-          {spot.predicted ? "" : `${spot.reportCount} ${t("reports", lang)} · ${ago(spot.ageMin * 60, lang)}`}
+          {spot.simulated ? <span className="badge sim">{lang === "hi" ? "डेमो डेटा" : "DEMO data"}</span> : <VerifyBadge spot={spot} lang={lang} />}{" "}
+          {spot.predicted ? "" : `${spot.reportCount} ${t("reports", lang)}${spot.simulated ? " (demo)" : ""} · ${ago(spot.ageMin * 60, lang)}`}
         </p>
       </div>
       <button className="icon-btn" onClick={onClose} aria-label={t("close", lang)}><X size={20} /></button>

@@ -87,6 +87,8 @@ CITIES = {
                  "label": "Gurugram", "names": ["gurugram", "gurgaon", "गुरुग्राम", "गुड़गांव"]},
     "kochi": {"center": [76.2900, 9.9800], "bbox": [76.20, 9.85, 76.40, 10.10],
               "label": "Kochi", "names": ["kochi", "ernakulam", "cochin", "കൊച്ചി", "എറണാകുളം"]},
+    "thiruvananthapuram": {"center": [76.9500, 8.5000], "bbox": [76.85, 8.40, 77.05, 8.62],
+                           "label": "Thiruvananthapuram", "names": ["thiruvananthapuram", "trivandrum", "തിരുവനന്തപുരം"]},
     "mumbai": {"center": [72.8475, 19.1080], "bbox": [72.80, 18.90, 72.99, 19.30],
                "label": "Mumbai", "names": ["mumbai", "मुंबई"]},
 }

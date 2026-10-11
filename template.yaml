@@ -355,9 +355,6 @@ Resources:
         Spots:
           Type: HttpApi
           Properties: { ApiId: !Ref Api, Path: /spots, Method: GET }
-        Timeline:
-          Type: HttpApi
-          Properties: { ApiId: !Ref Api, Path: /demo/timeline, Method: GET }
 
   VoteFunction:
     Type: AWS::Serverless::Function
@@ -516,6 +513,22 @@ Resources:
       FunctionName: !Ref WhatsAppFunction
       Principal: sns.amazonaws.com
       SourceArn: !Ref WhatsAppTopicArn
+
+  InsightsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions.insights.app.handler
+      Timeout: 25
+      Events:
+        RainIndia:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /rain/india, Method: GET }
+        RainPosts:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /rain/india/posts, Method: GET }
+        Simulation:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /simulation, Method: GET }
 
   DrainsFunction:
     Type: AWS::Serverless::Function

@@ -38,7 +38,7 @@ All Python 3.12 on arm64, last deployed 00:56 IST.
 - **HTTP API** `uuastysok5`, stage `$default` with auto-deploy on.
 - **CORS** allows only `https://main.d5e2kevy286g7.amplifyapp.com`.
 - **17 routes:**
-  - `GET /hotspots`, `/spots`, `/reports`, `/reports/{id}`, `/demo/timeline`, `/bus-impact`, `/drains`, `/drains/{id}`, `/drains/metrics`
+  - `GET /hotspots`, `/spots`, `/reports`, `/reports/{id}`, `/bus-impact`, `/drains`, `/drains/{id}`, `/drains/metrics`
   - `POST /reports/upload-url`, `/reports/{id}/vote`, `/route`, `/subscriptions`, `/drains/upload-url`, `/drains/{id}/assign`, `/drains/{id}/after-url`, `/whatsapp/twilio`
 
 ## DynamoDB tables (6)

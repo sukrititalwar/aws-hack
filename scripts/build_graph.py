@@ -26,6 +26,7 @@ AREAS = {
     ],
     "gurugram": [("Hero Honda Chowk, Rajiv Chowk, IFFCO, Golf Course Rd", (77.000, 28.420, 77.110, 28.510))],
     "kochi": [("MG Road, Kaloor, Edappally, Vyttila", (76.270, 9.950, 76.325, 10.035))],
+    "thiruvananthapuram": [("Thampanoor, Chalai, Vanchiyoor, Pattoor, Pattom", (76.915, 8.465, 76.975, 8.535))],
     "bengaluru": [("Silk Board", (77.600, 12.905, 77.645, 12.935))],
 }
 

@@ -1,21 +1,26 @@
-import { Bus, Camera, CloudRain, History, Layers, MessageCircle, Monitor, Moon, Navigation, Radio, Shield, Sun, TriangleAlert, UserRound, Waves, WifiOff, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Bus, Camera, CloudRain, FlaskConical, Layers, MessageCircle, Monitor, Moon, Navigation, Shield, Sun, TriangleAlert, UserRound, Waves, WifiOff, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, API, CITIES, setCity as setApiCity, WHATSAPP_JOIN, WHATSAPP_NUMBER } from "./api";
 import AccountSheet from "./components/AccountSheet";
 import BusSheet from "./components/BusSheet";
 import { authEnabled, useAuth } from "./auth";
-import DrainSheet from "./components/DrainSheet";
 import DemoBar from "./components/DemoBar";
-import MapView from "./components/MapView";
+import DrainSheet from "./components/DrainSheet";
+import MapRoot from "./components/MapRoot";
+import RainPanel from "./components/RainPanel";
 import ReportFlow from "./components/ReportFlow";
 import RoutePanel from "./components/RoutePanel";
+import SimPanel from "./components/SimPanel";
 import SpotSheet from "./components/SpotSheet";
 import { t, VEHICLES, type Lang } from "./i18n";
 import { VehicleIcon, VerdictIcon } from "./icons";
-import type { CompareRow, CoverageArea, Hotspot, LonLat, Mode, Report, RouteResult, Spot, Theme, Vehicle, Weather } from "./types";
+import type { CompareRow, CoverageArea, Hotspot, LonLat, Mode, RainCity, RainIndia, Report, RouteResult, SimPayload, Spot, Theme, Vehicle, Weather } from "./types";
+
+const NO_REPORTS = new Map<string, Report>();   // spot details come from the spot itself
+const INDIA_BOUNDS: [number, number, number, number] = [68.2, 6.0, 97.6, 35.8];
 import { getPosition, store, stored } from "./util";
 
-type Panel = { kind: "none" } | { kind: "report" } | { kind: "route" } | { kind: "spot"; spot: Spot } | { kind: "hotspot"; h: Hotspot } | { kind: "bus" } | { kind: "drains" } | { kind: "account" };
+type Panel = { kind: "none" } | { kind: "report" } | { kind: "route" } | { kind: "spot"; spot: Spot } | { kind: "hotspot"; h: Hotspot } | { kind: "bus" } | { kind: "drains" } | { kind: "account" } | { kind: "rain" } | { kind: "sim" };
 
 // WhatsApp replies link here as ?city=..&lat=..&lon=..
 const URLQ = new URLSearchParams(location.search);
@@ -26,9 +31,10 @@ const initialCity = (() => {
 setApiCity(initialCity);
 
 /** Compact live-rain status for the toolbar. Full numbers are in the tooltip / screen-reader label. */
-function RainStatus({ w, lang, city }: { w: Weather | null; lang: Lang; city: string }) {
+function RainStatus({ w, lang, city, onOpen }: { w: Weather | null; lang: Lang; city: string; onOpen: () => void }) {
   if (!w) return null;
   const name = CITIES[city][lang === "hi" ? "hi" : "label"];
+  const sim = !!w.simulated;
   const cls = w.hotspotsAtRisk > 0 ? "storm" : w.rainPast3h >= 2 || w.maxRainNowAtHotspots >= 1 ? "wet" : "";
   const mins = Math.max(0, Math.round((Date.now() / 1000 - w.updatedAt) / 60));
   const full = lang === "hi"
@@ -36,13 +42,15 @@ function RainStatus({ w, lang, city }: { w: Weather | null; lang: Lang; city: st
     : `${name}: ${w.rainPast3h.toFixed(1)} mm last 3 h · ${w.rainNow.toFixed(1)} mm/h now · ${w.rainNext3h.toFixed(1)} mm next 3 h${w.hotspotsAtRisk ? ` · ${w.hotspotsAtRisk} hotspots at risk` : ""} · updated ${mins} min ago`;
   const Icon = cls ? CloudRain : Sun;
   return (
-    <span className={`rainpill ${cls}`} title={`${full}\n${w.source}`} aria-label={full} role="status">
+    <button type="button" className={`rainpill ${cls}${sim ? " sim" : ""}`} onClick={onOpen}
+      title={`${full}\n${w.source}\n${lang === "hi" ? "पूरे भारत में बारिश देखें" : "Tap to see where it is raining across India"}`} aria-label={`${full}. ${lang === "hi" ? "पूरे भारत में बारिश देखें" : "Open rain across India"}`}>
       <Icon size={16} aria-hidden />
+      {sim && <span className="simtag inline">DEMO</span>}
       <span>{w.rainNow.toFixed(1)} mm/h</span>
       <span className="rp-extra">· {w.rainNext3h.toFixed(0)} mm {lang === "hi" ? "अगले 3 घं" : "next 3 h"}</span>
       {w.hotspotsAtRisk > 0 && <span className="rp-risk">{w.hotspotsAtRisk} {lang === "hi" ? "ख़तरे में" : "at risk"}</span>}
-      <span className="rp-age">{mins}m</span>
-    </span>
+      {!sim && <span className="rp-age">{mins}m</span>}
+    </button>
   );
 }
 
@@ -111,7 +119,13 @@ export default function App() {
   const [coverage, setCoverage] = useState<CoverageArea[] | null>(null);
   const [vehicle, setVehicleState] = useState<Vehicle>(stored<Vehicle>("vehicle", "scooter"));
   const [lang, setLangState] = useState<Lang>(stored<Lang>("lang", "en"));
-  const [mode, setMode] = useState<Mode>("live");
+  const [mode, setModeState] = useState<Mode>("live");
+  const [sim, setSim] = useState<SimPayload | null>(null);
+  const [at, setAt] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [rain, setRain] = useState<RainIndia | null>(null);
+  const [rainErr, setRainErr] = useState("");
+  const [rainSel, setRainSel] = useState<string | null>(null);
   const [spots, setSpots] = useState<Spot[]>([]);
   const [hotspots, setHotspots] = useState<Hotspot[]>([]);
   const [weather, setWeather] = useState<Weather | null>(null);
@@ -124,10 +138,6 @@ export default function App() {
   const [route, setRoute] = useState<RouteResult | null>(null);
   const [offline, setOffline] = useState(!navigator.onLine);
   const [err, setErr] = useState("");
-  // demo replay
-  const [timeline, setTimeline] = useState<{ start: number; end: number; reports: Report[] } | null>(null);
-  const [at, setAt] = useState(0);
-  const [playing, setPlaying] = useState(false);
   const urlPos: LonLat | null = URLQ.get("lat") && URLQ.get("lon") ? [Number(URLQ.get("lon")), Number(URLQ.get("lat"))] : null;
   const center = useMemo<LonLat>(() => (city === initialCity && urlPos) || CITIES[city].center, [city]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -141,7 +151,6 @@ export default function App() {
     setRoute(null);
     setFrom(null);
     setTo(null);
-    setTimeline(null);
     setAltState({ v: null, g: null });
     setPanel({ kind: "none" });
   }
@@ -158,45 +167,60 @@ export default function App() {
 
   // hotspots + live rain, refreshed every 5 min
   useEffect(() => {
-    if (!API) return;
+    if (!API || mode === "sim") return;
     const load = () => api.hotspots().then((r) => { setHotspots(r.hotspots); setWeather(r.weather); }).catch(() => undefined);
     load();
     const id = setInterval(load, 5 * 60000);
     return () => clearInterval(id);
-  }, [city]);
+  }, [city, mode]);
+
+  // "where is it raining across India": load while the panel is open, refresh every 5 min
+  useEffect(() => {
+    if (panel.kind !== "rain" || !API) return;
+    const load = () => api.rainIndia().then((r) => { setRain(r); setRainErr(""); }).catch((e) => setRainErr(String(e.message ?? e)));
+    load();
+    const id = setInterval(load, 5 * 60000);
+    return () => clearInterval(id);
+  }, [panel.kind]);
 
   // live spots: poll every 30 s
   const loadLive = useCallback(() => {
     api.spots("live").then((r) => { setSpots(r.spots); setErr(""); }).catch((e) => setErr(String(e.message ?? e)));
   }, []);
   useEffect(() => {
-    if (mode !== "live" || !API) return;
+    if (!API || mode === "sim") return;
     loadLive();
     const id = setInterval(loadLive, 30000);
     return () => clearInterval(id);
-  }, [mode, loadLive, city]);
+  }, [loadLive, city, mode]);
 
-  // demo: load the archived timeline, then spots at the scrubbed time (debounced)
+  // DEMO storm: load once when entering, then follow the time slider (debounced)
   useEffect(() => {
-    if (mode !== "demo") return;
-    setRoute(null);
-    api.timeline().then((tl) => {
-      if (!tl.start || !tl.end) return setErr("No demo reports seeded yet. Run scripts/seed_demo.py.");
-      const t0 = tl.start - 10 * 60, t1 = tl.end + 60 * 60;
-      setTimeline({ start: t0, end: t1, reports: tl.reports });
-      setAt(t0);
-    }).catch((e) => setErr(String(e.message ?? e)));
-  }, [mode, city]);
-  const debounce = useRef<number>();
+    if (mode !== "sim" || !API) return;
+    let off = false;
+    api.simulation().then((r) => { if (!off) { setSim(r); setSpots(r.spots); setWeather(r.weather); setErr(""); setAt(r.scenario.start + 90 * 60); } })
+      .catch((e) => { if (!off) setErr(String(e.message ?? e)); });
+    return () => { off = true; };
+  }, [mode]);
   useEffect(() => {
-    if (mode !== "demo" || !at) return;
-    clearTimeout(debounce.current);
-    debounce.current = window.setTimeout(() => {
-      api.spots("demo", at).then((r) => setSpots(r.spots)).catch(() => undefined);
-    }, 200);
-  }, [mode, at]);
+    if (mode !== "sim" || !API || !at) return;
+    let off = false;
+    const id = setTimeout(() => {
+      api.simulation(at).then((r) => { if (!off) { setSim(r); setSpots(r.spots); setWeather(r.weather); setErr(""); } })
+        .catch((e) => { if (!off) setErr(String(e.message ?? e)); });
+    }, 150);
+    return () => { off = true; clearTimeout(id); };
+  }, [at, mode]);
 
-  const known = useMemo(() => new Map((timeline?.reports ?? []).map((r) => [r.reportId, r])), [timeline]);
+  function setMode(m: Mode) {
+    if (m === mode) return;
+    setPlaying(false);
+    if (m === "sim" && city !== "delhi") setCity("delhi");
+    else { setSpots([]); setWeather(null); setRoute(null); setAltState({ v: null, g: null }); setPanel({ kind: "none" }); }
+    if (m === "live") { setSim(null); setAt(0); setHotspots([]); }
+    setModeState(m);
+  }
+
 
   function openRoute(dest?: LonLat) {
     setRoute(null);
@@ -215,7 +239,9 @@ export default function App() {
 
   return (
     <div className="app">
-      <MapView center={center} spots={spots} hotspots={hotspots} vehicle={vehicle} lang={lang} route={route} altRoute={alt.g}
+      <MapRoot center={center} spots={panel.kind === "rain" ? [] : spots} hotspots={panel.kind === "rain" || mode === "sim" ? [] : hotspots} vehicle={vehicle}
+        rainPoints={panel.kind === "rain" ? rain?.cities ?? null : null} viewBounds={panel.kind === "rain" ? INDIA_BOUNDS : null}
+        onRainPoint={(c: RainCity) => setRainSel(c.key)} lang={lang} route={route} altRoute={alt.g}
         from={panel.kind === "route" ? from : null} to={panel.kind === "route" ? to : null}
         picking={!!picking} onPick={onPick} dark={dark} coverage={panel.kind === "route" ? coverage : null}
         onSpot={(s) => setPanel({ kind: "spot", spot: s })} onHotspot={(h) => setPanel({ kind: "hotspot", h })} />
@@ -223,15 +249,15 @@ export default function App() {
       <header className="topbar">
         <div className="toolbar">
           <span className="brand" title="Can My Scooter Cross?"><Waves size={20} aria-hidden /><span className="brand-name">Can My Scooter Cross?</span></span>
-          <select className="citysel" value={city} onChange={(e) => setCity(e.target.value)} aria-label="City">
+          <select className="citysel" value={city} onChange={(e) => setCity(e.target.value)} aria-label="City" disabled={mode === "sim"}>
             {Object.entries(CITIES).map(([k, c]) => <option key={k} value={k}>{lang === "hi" ? c.hi : c.label}</option>)}
           </select>
-          {mode === "live" && <RainStatus w={weather} lang={lang} city={city} />}
-          <span className="spacer" />
           <div className="seg" role="radiogroup" aria-label="Mode">
-            <button role="radio" aria-checked={mode === "live"} className={mode === "live" ? "on" : ""} onClick={() => setMode("live")}><Radio size={15} aria-hidden /> <span className="live-label">{t("live", lang)}</span></button>
-            <button role="radio" aria-checked={mode === "demo"} className={mode === "demo" ? "on" : ""} onClick={() => setMode("demo")}><History size={15} aria-hidden /> <span className="seg-label">{t("demo", lang)}</span></button>
+            <button role="radio" aria-checked={mode === "live"} className={mode === "live" ? "on" : ""} onClick={() => setMode("live")}>{t("live", lang)}</button>
+            <button role="radio" aria-checked={mode === "sim"} className={`simbtn${mode === "sim" ? " on" : ""}`} onClick={() => setMode("sim")}><FlaskConical size={14} aria-hidden /> {t("demo", lang)}</button>
           </div>
+          <RainStatus w={weather} lang={lang} city={city} onOpen={() => { if (mode === "sim") { setPanel({ kind: "sim" }); return; } setRainSel(null); setPanel({ kind: "rain" }); }} />
+          <span className="spacer" />
           <button className="chip icon-chip" onClick={() => setTheme(THEME_NEXT[theme])} aria-label={THEME_LABEL[theme][lang]} title={THEME_LABEL[theme][lang]}>
             {theme === "light" ? <Sun size={17} /> : theme === "dark" ? <Moon size={17} /> : <Monitor size={17} />}
           </button>
@@ -251,6 +277,12 @@ export default function App() {
             </button>
           ))}
         </div>
+        {mode === "sim" && (
+          <button className="banner sim" onClick={() => setPanel({ kind: "sim" })}>
+            <FlaskConical size={16} aria-hidden />
+            <span><strong>{lang === "hi" ? "डेमो" : "DEMO"}</strong> — {lang === "hi" ? "हर मान डेमो के लिए बनाया गया है। ये असली रिपोर्ट नहीं हैं।" : "Every value is made up for a demo. These are not real reports."}</span>
+          </button>
+        )}
         {offline && <div className="banner warn"><WifiOff size={16} aria-hidden /> {t("offline", lang)}</div>}
         {!API && <div className="banner warn">{t("noApi", lang)}: set VITE_API_URL</div>}
         {err && API && <button className="banner warn" onClick={() => setErr("")}><TriangleAlert size={16} aria-hidden /> {err}</button>}
@@ -262,10 +294,14 @@ export default function App() {
         )}
       </header>
 
-      {panel.kind === "none" && <Legend lang={lang} raised={mode === "demo"} />}
+      {panel.kind === "none" && <Legend lang={lang} raised={mode === "sim"} />}
+      {mode === "sim" && sim && (panel.kind === "none" || panel.kind === "spot") && (
+        <DemoBar start={sim.scenario.start} end={sim.scenario.end} at={at || sim.now} setAt={setAt} playing={playing} setPlaying={setPlaying}
+          lang={lang} count={spots.length} simulated />
+      )}
 
       {panel.kind === "none" && (
-        <div className={`fabs${mode === "demo" ? " above-demo" : ""}`}>
+        <div className={`fabs${mode === "sim" ? " above-demo" : ""}`}>
           {mode === "live" && <button className="fab primary" onClick={() => setPanel({ kind: "report" })}><Camera size={20} aria-hidden /> {t("report", lang)}</button>}
           <button className="fab" onClick={() => openRoute()}><Navigation size={20} aria-hidden /> {t("safeRoute", lang)}</button>
           {vehicle === "bus" && <button className="fab round" onClick={() => setPanel({ kind: "bus" })} aria-label="Bus routes affected" title="Bus routes affected"><Bus size={20} /></button>}
@@ -278,27 +314,29 @@ export default function App() {
         </div>
       )}
 
-      {mode === "demo" && timeline && panel.kind !== "report" && (
-        <DemoBar start={timeline.start} end={timeline.end} at={at} setAt={setAt} playing={playing} setPlaying={setPlaying} lang={lang} count={spots.length} />
-      )}
-
       {panel.kind === "report" && (
         <ReportFlow fallbackCenter={center} vehicle={vehicle} lang={lang} setLang={setLang}
           onClose={() => setPanel({ kind: "none" })} onDone={loadLive} onRoute={(p) => openRoute(p)} />
       )}
       {panel.kind === "spot" && (
-        <SpotSheet spot={panel.spot} mode={mode} known={known} vehicle={vehicle} lang={lang} setLang={setLang}
+        <SpotSheet spot={panel.spot} mode={mode} known={NO_REPORTS} vehicle={vehicle} lang={lang} setLang={setLang}
           onClose={() => setPanel({ kind: "none" })} onRoute={(p) => openRoute(p)} />
       )}
       {panel.kind === "route" && (
-        <RoutePanel vehicle={vehicle} lang={lang} mode={mode} at={at} center={center} from={from} to={to} setFrom={setFrom} setTo={setTo}
+        <RoutePanel vehicle={vehicle} lang={lang} mode={mode} at={mode === "sim" ? at : undefined} center={center} from={from} to={to} setFrom={setFrom} setTo={setTo}
           picking={picking} setPicking={setPicking} result={route} setResult={setRoute}
           alt={alt.v} setAlt={(v, g) => setAltState({ v, g })} showCoverage={setCoverage} onSignIn={() => setPanel({ kind: "account" })}
           onClose={() => { setPanel({ kind: "none" }); setRoute(null); setPicking(null); setAltState({ v: null, g: null }); setCoverage(null); }} />
       )}
+      {panel.kind === "rain" && (
+        <RainPanel lang={lang} data={rain} error={rainErr} onReload={() => { setRainErr(""); api.rainIndia().then(setRain).catch((e) => setRainErr(String(e.message ?? e))); }}
+          selected={rainSel} onSelect={setRainSel} onClose={() => setPanel({ kind: "none" })}
+          onOpenCity={(k) => { if (CITIES[k]) setCity(k); }} />
+      )}
+      {panel.kind === "sim" && <SimPanel lang={lang} data={sim} vehicle={vehicle} at={at || sim?.now || 0} onClose={() => setPanel({ kind: "none" })} />}
       {panel.kind === "account" && <AccountSheet lang={lang} center={center} onClose={() => setPanel({ kind: "none" })} onRoute={(p) => openRoute(p)} />}
       {panel.kind === "drains" && <DrainSheet lang={lang} center={center} onClose={() => setPanel({ kind: "none" })} />}
-      {panel.kind === "bus" && <BusSheet mode={mode} at={at} lang={lang} onClose={() => setPanel({ kind: "none" })} />}
+      {panel.kind === "bus" && <BusSheet mode={mode} at={mode === "sim" ? at : undefined} lang={lang} onClose={() => setPanel({ kind: "none" })} />}
       {panel.kind === "hotspot" && (
         <div className="sheet" role="dialog" aria-label={panel.h.name}>
           <header className="sheet-head">
