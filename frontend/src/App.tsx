@@ -1,4 +1,4 @@
-import { Bus, Camera, CloudRain, FlaskConical, Layers, MessageCircle, Monitor, Moon, Navigation, Shield, Sun, TriangleAlert, UserRound, Waves, WifiOff, X } from "lucide-react";
+import { Bus, Camera, CloudRain, FlaskConical, Layers, MessageCircle, Monitor, Moon, Navigation, Shield, Smartphone, Sun, TriangleAlert, UserRound, Waves, WifiOff, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, API, CITIES, setCity as setApiCity, WHATSAPP_JOIN, WHATSAPP_NUMBER } from "./api";
 import AccountSheet from "./components/AccountSheet";
@@ -7,6 +7,7 @@ import { authEnabled, useAuth } from "./auth";
 import DemoBar from "./components/DemoBar";
 import DrainSheet from "./components/DrainSheet";
 import MapRoot from "./components/MapRoot";
+import MobileSheet from "./components/MobileSheet";
 import RainPanel from "./components/RainPanel";
 import ReportFlow from "./components/ReportFlow";
 import RoutePanel from "./components/RoutePanel";
@@ -20,7 +21,7 @@ const NO_REPORTS = new Map<string, Report>();   // spot details come from the sp
 const INDIA_BOUNDS: [number, number, number, number] = [68.2, 6.0, 97.6, 35.8];
 import { store, stored, watchUserLocation, type UserLocation } from "./util";
 
-type Panel = { kind: "none" } | { kind: "report" } | { kind: "route" } | { kind: "spot"; spot: Spot } | { kind: "hotspot"; h: Hotspot } | { kind: "bus" } | { kind: "drains" } | { kind: "account" } | { kind: "rain" } | { kind: "sim" };
+type Panel = { kind: "none" } | { kind: "report" } | { kind: "route" } | { kind: "spot"; spot: Spot } | { kind: "hotspot"; h: Hotspot } | { kind: "bus" } | { kind: "drains" } | { kind: "account" } | { kind: "rain" } | { kind: "sim" } | { kind: "mobile" };
 
 // WhatsApp replies link here as ?city=..&lat=..&lon=..
 const URLQ = new URLSearchParams(location.search);
@@ -302,6 +303,9 @@ export default function App() {
             </div>
             <RainStatus w={weather} lang={lang} city={city} onOpen={() => { if (mode === "sim") { setPanel({ kind: "sim" }); return; } setRainSel(null); setPanel({ kind: "rain" }); }} />
             <span className="spacer" />
+            <button className="chip icon-chip" onClick={() => setPanel({ kind: "mobile" })} aria-label={lang === "hi" ? "फ़ोन पर खोलें" : "Open on Phone"} title={lang === "hi" ? "फ़ोन पर खोलें (QR कोड)" : "Open on Phone (QR Code)"}>
+              <Smartphone size={17} />
+            </button>
             <button className="chip icon-chip" onClick={() => setTheme(THEME_NEXT[theme])} aria-label={THEME_LABEL[theme][lang]} title={THEME_LABEL[theme][lang]}>
               {theme === "light" ? <Sun size={17} /> : theme === "dark" ? <Moon size={17} /> : <Monitor size={17} />}
             </button>
@@ -376,6 +380,7 @@ export default function App() {
           onOpenCity={(k) => { if (CITIES[k]) setCity(k); }} />
       )}
       {panel.kind === "sim" && <SimPanel lang={lang} data={sim} vehicle={vehicle} at={at || sim?.now || 0} onClose={() => setPanel({ kind: "none" })} />}
+      {panel.kind === "mobile" && <MobileSheet lang={lang} onClose={() => setPanel({ kind: "none" })} />}
       {panel.kind === "account" && <AccountSheet lang={lang} center={center} onClose={() => setPanel({ kind: "none" })} onRoute={(p) => openRoute(p)} />}
       {panel.kind === "drains" && <DrainSheet lang={lang} center={center} onClose={() => setPanel({ kind: "none" })} />}
       {panel.kind === "bus" && <BusSheet mode={mode} at={mode === "sim" ? at : undefined} lang={lang} onClose={() => setPanel({ kind: "none" })} />}

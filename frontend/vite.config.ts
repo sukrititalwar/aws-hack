@@ -1,10 +1,20 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import { qrcode } from "vite-plugin-qrcode";
+import basicSsl from "@vitejs/plugin-basic-ssl";
+
+const useHttps = process.env.HTTPS === "true" || process.argv.includes("--https");
 
 export default defineConfig({
+  server: {
+    host: "0.0.0.0",
+    port: 5173,
+  },
   plugins: [
     react(),
+    qrcode(),
+    ...(useHttps ? [basicSsl()] : []),
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["icon.svg"],

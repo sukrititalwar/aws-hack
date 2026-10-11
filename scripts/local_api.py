@@ -16,6 +16,7 @@ import json
 import os
 import random
 import re
+import socket
 import sys
 import threading
 import time
@@ -387,21 +388,33 @@ class H(BaseHTTPRequestHandler):
         self._send(404, {"error": "not found"})
 
 
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
 def main():
     global ARGS
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8787)
     ap.add_argument("--bedrock", action="store_true", help="use real Bedrock for uploaded photos")
     ap.add_argument("--social", action="store_true", help="poll live social/news feeds every 10 min")
-    ap.add_argument("--host", default="127.0.0.1", help="0.0.0.0 to open it from a phone on the same Wi-Fi")
+    ap.add_argument("--host", default="0.0.0.0", help="host to bind to (0.0.0.0 by default for mobile access on Wi-Fi)")
     ap.add_argument("--bedrock-down", action="store_true", help="simulate Bedrock being unavailable: drains use the labelled fallback")
     ap.add_argument("--unsure", action="store_true", help="mock photo analysis returns an unclear, low-confidence result")
     ARGS = ap.parse_args()
     for c in config.CITIES:
         HOTSPOTS[c] = load_hotspots(c)
     threading.Thread(target=background, daemon=True).start()
-    print(f"Local API on http://{ARGS.host}:{ARGS.port}  (live rain"
-          f"{', live social' if ARGS.social else ''})")
+    local_ip = get_local_ip()
+    host_display = "localhost" if ARGS.host in ("0.0.0.0", "127.0.0.1") else ARGS.host
+    print(f"Local API on http://{host_display}:{ARGS.port} and http://{local_ip}:{ARGS.port} (ready for mobile on Wi-Fi)")
     ThreadingHTTPServer((ARGS.host, ARGS.port), H).serve_forever()
 
 

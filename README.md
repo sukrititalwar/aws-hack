@@ -89,6 +89,15 @@ npm run dev
 .venv/bin/python scripts/seed_social.py --city delhi --dry-run --no-llm --hours 48   # what's being posted now
 cd backend && ../.venv/bin/python -m pytest -q           # 67 tests
 ```
+
+### 📱 Open on Mobile Phone (Same Wi-Fi)
+```bash
+./scripts/run_mobile.sh
+```
+* **One-Step Launch:** Starts both the Python API and Vite frontend on `0.0.0.0` and prints an ASCII QR code in your terminal.
+* **In-App QR Code:** Tap the **phone icon (📱)** in the header to view a scan-with-camera QR code and network link.
+* **Install PWA:** On iPhone (Safari), tap **Share → Add to Home Screen**. On Android (Chrome), tap **Install App** to run full-screen with offline caching.
+* **Outdoors on 4G/5G:** Run `cd frontend && npm run tunnel` for an instant public HTTPS tunnel.
 ### Deploy
 ```bash
 sam build && sam deploy --guided       # region ap-south-1; set AppUrl, optionally RedditClientId/Secret, YouTubeApiKey, XBearerToken
