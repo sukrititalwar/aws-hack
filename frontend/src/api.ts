@@ -1,7 +1,10 @@
 import type { StyleSpecification } from "maplibre-gl";
 import type { BusImpact, DrainMetrics, DrainRow, Hotspot, LivePosts, LonLat, Mode, PlaceKind, PredictiveRouteResult, RainIndia, Report, RouteResult, SavedPlace, SimPayload, Spot, Vehicle, Weather } from "./types";
 
-export const API = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+const API_ENV = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+// Opened from a phone on the same Wi-Fi (http://<laptop-ip>:5173)? "localhost" would mean the phone itself, so use the page's host.
+export const API = API_ENV.replace(/^(https?:\/\/)(localhost|127\.0\.0\.1)(?=[:/]|$)/, (m, scheme, host) =>
+  typeof location !== "undefined" && location.hostname !== host && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? `${scheme}${location.hostname}` : m);
 export const PREDICTIVE_ROUTE_ENABLED =
   (import.meta.env.VITE_PREDICTIVE_ROUTE_ENABLED as string | undefined) === "true";
 export const CITIES: Record<string, { label: string; hi: string; center: LonLat }> = {

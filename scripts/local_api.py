@@ -141,10 +141,10 @@ def city_spots(city, mode, now, predicted=True):
     return real + (spots.predicted_spots(HOTSPOTS.get(city, []), real, now) if mode == "live" and predicted else [])
 
 
-def public(r):
+def public(r, host=None):
     out = {k: v for k, v in r.items() if k not in ("model_json", "extraction", "cell", "cityMode")}
     if r["reportId"] in PHOTOS:
-        out["photoUrl"] = f"http://localhost:{ARGS.port}/photo/{r['reportId']}"
+        out["photoUrl"] = f"http://{host or 'localhost:' + str(ARGS.port)}/photo/{r['reportId']}"
     return out
 
 
@@ -235,13 +235,13 @@ class H(BaseHTTPRequestHandler):
                    "reasoning": head.get("reasoning"), "reasoning_hi": head.get("reasoning_hi"),
                    "afterNote": head.get("afterNote"), "clearanceVerified": head.get("clearanceVerified", False)}
             if head["reportId"] in PHOTOS:
-                out["photoUrl"] = f"http://localhost:{ARGS.port}/photo/{head['reportId']}"
+                out["photoUrl"] = f"http://{self.headers.get("Host") or "localhost:" + str(ARGS.port)}/photo/{head['reportId']}"
             if head["reportId"] + "-after" in PHOTOS:
-                out["afterUrl"] = f"http://localhost:{ARGS.port}/photo/{head['reportId']}-after"
+                out["afterUrl"] = f"http://{self.headers.get("Host") or "localhost:" + str(ARGS.port)}/photo/{head['reportId']}-after"
             return self._send(200, out)
         m = re.fullmatch(r"/reports/([\w-]+)", u.path)
         if m and m.group(1) in REPORTS:
-            return self._send(200, public(REPORTS[m.group(1)]))
+            return self._send(200, public(REPORTS[m.group(1)], self.headers.get("Host")))
         m = re.fullmatch(r"/photo/([\w-]+)", u.path)
         if m and m.group(1) in PHOTOS:
             return self._send(200, PHOTOS[m.group(1)], "image/jpeg")
@@ -270,7 +270,7 @@ class H(BaseHTTPRequestHandler):
             rid = uuid.uuid4().hex[:16]
             DRAINS[rid] = {"reportId": rid, "city": b.get("city", "delhi"), "lat": b["lat"], "lon": b["lon"], "ts": int(time.time()),
                            "status": "analysing", "note": b.get("note"), "deviceHash": b["deviceId"][:16]}
-            return self._send(200, {"reportId": rid, "uploadUrl": f"http://localhost:{ARGS.port}/upload-drain/{rid}", "fields": {}})
+            return self._send(200, {"reportId": rid, "uploadUrl": f"http://{self.headers.get("Host") or "localhost:" + str(ARGS.port)}/upload-drain/{rid}", "fields": {}})
         m = re.fullmatch(r"/upload-drain/([\w-]+)", u.path)
         if m:
             rid = m.group(1)
@@ -319,7 +319,7 @@ class H(BaseHTTPRequestHandler):
                 for r in members:
                     r.update({"status": "assigned", "assignedTo": json.loads(raw)["worker"], "assignedAt": int(time.time())})
                 return self._send(200, {"ok": True})
-            return self._send(200, {"uploadUrl": f"http://localhost:{ARGS.port}/upload-after/{gid}", "fields": {}})
+            return self._send(200, {"uploadUrl": f"http://{self.headers.get("Host") or "localhost:" + str(ARGS.port)}/upload-after/{gid}", "fields": {}})
         m = re.fullmatch(r"/upload-after/([\w-]+)", u.path)
         if m:
             gid = m.group(1)
@@ -339,7 +339,7 @@ class H(BaseHTTPRequestHandler):
             REPORTS[rid] = {"reportId": rid, "city": b.get("city", "delhi"), "mode": "live", "lat": b["lat"], "lon": b["lon"],
                             "place": b.get("place"), "ts": int(time.time()), "createdAt": int(time.time()),
                             "status": "analysing", "votes": {}, "source_type": "photo"}
-            return self._send(200, {"reportId": rid, "uploadUrl": f"http://localhost:{ARGS.port}/upload/{rid}",
+            return self._send(200, {"reportId": rid, "uploadUrl": f"http://{self.headers.get("Host") or "localhost:" + str(ARGS.port)}/upload/{rid}",
                                     "fields": {"key": f"uploads/{rid}.jpg", "Content-Type": "image/jpeg"}})
         m = re.fullmatch(r"/upload/([\w-]+)", u.path)
         if m:
@@ -393,15 +393,16 @@ def main():
     ap.add_argument("--port", type=int, default=8787)
     ap.add_argument("--bedrock", action="store_true", help="use real Bedrock for uploaded photos")
     ap.add_argument("--social", action="store_true", help="poll live social/news feeds every 10 min")
+    ap.add_argument("--host", default="127.0.0.1", help="0.0.0.0 to open it from a phone on the same Wi-Fi")
     ap.add_argument("--bedrock-down", action="store_true", help="simulate Bedrock being unavailable: drains use the labelled fallback")
     ap.add_argument("--unsure", action="store_true", help="mock photo analysis returns an unclear, low-confidence result")
     ARGS = ap.parse_args()
     for c in config.CITIES:
         HOTSPOTS[c] = load_hotspots(c)
     threading.Thread(target=background, daemon=True).start()
-    print(f"Local API on http://localhost:{ARGS.port}  (live rain"
+    print(f"Local API on http://{ARGS.host}:{ARGS.port}  (live rain"
           f"{', live social' if ARGS.social else ''})")
-    ThreadingHTTPServer(("127.0.0.1", ARGS.port), H).serve_forever()
+    ThreadingHTTPServer((ARGS.host, ARGS.port), H).serve_forever()
 
 
 if __name__ == "__main__":
