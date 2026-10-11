@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { DARK_STYLE, domOverlay, loadGoogleMaps } from "../googleMaps";
 import type { LonLat } from "../types";
 import type { MapProps } from "./mapProps";
-import { endpointElement, hotspotElement, rainElement, spotElement } from "./markers";
+import { endpointElement, hotspotElement, rainElement, spotElement, userLocationElement } from "./markers";
 
 interface Props extends MapProps {
   /** Called if Google cannot be used (load failure, rejected key); the app then falls back to the other map. */
@@ -143,6 +143,20 @@ export default function GoogleMapView(p: Props) {
       .filter(([, pos]) => !!pos)
       .map(([kind, pos]) => domOverlay(m, endpointElement(kind), pos as LonLat, 4)));
   }, [ready, p.from, p.to]);
+
+  // ---- live user GPS location marker & camera follow ----
+  useEffect(() => {
+    const m = map.current;
+    if (!ready || !m) return;
+    meOv.current?.setMap(null);
+    meOv.current = null;
+    if (!p.userLocation) return;
+    const { pos, heading } = p.userLocation;
+    meOv.current = domOverlay(m, userLocationElement(heading), pos, 5);
+    if (p.followUser) {
+      m.panTo(ll(pos));
+    }
+  }, [ready, p.userLocation, p.followUser]);
 
   // ---- routes ----
   useEffect(() => {

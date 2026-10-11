@@ -11,12 +11,11 @@ interface Props {
   setPlaying: (b: boolean) => void;
   lang: Lang;
   count: number;
-  simulated?: boolean;
 }
 
 const STEP_S = 5 * 60; // each tick advances 5 minutes of the archived evening
 
-export default function DemoBar({ start, end, at, setAt, playing, setPlaying, lang, count, simulated }: Props) {
+export default function DemoBar({ start, end, at, setAt, playing, setPlaying, lang, count }: Props) {
   useEffect(() => {
     if (!playing) return;
     const id = setInterval(() => {
@@ -27,16 +26,16 @@ export default function DemoBar({ start, end, at, setAt, playing, setPlaying, la
   }, [playing, at, end, setAt, setPlaying]);
 
   return (
-    <div className="demobar" role="group" aria-label={t("demo", lang)}>
+    <div className="demobar" role="group" aria-label={lang === "hi" ? "सिम्युलेशन टाइमलाइन" : "Simulation timeline"}>
       <button className="icon-btn play" onClick={() => { if (at >= end) setAt(start); setPlaying(!playing); }}
         aria-label={playing ? t("pause", lang) : t("play", lang)}>
         {playing ? <Pause size={20} /> : <Play size={20} />}
       </button>
       <div className="demo-main">
         <div className="demo-time">
-          <strong>{new Date(at * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</strong>{simulated && <span className="simtag inline">DEMO</span>} <span className="muted small">· {count} {lang === "hi" ? "जगहें" : "spots"}</span>
+          <strong>{new Date(at * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</strong> <span className="muted small">· {count} {lang === "hi" ? "जगहें" : "spots"}</span>
         </div>
-        <input type="range" min={start} max={end} step={60} value={at} aria-label={t("demo", lang)}
+        <input type="range" min={start} max={end} step={60} value={at} aria-label={lang === "hi" ? "सिम्युलेशन समय" : "Simulation time"}
           onChange={(e) => { setPlaying(false); setAt(Number(e.target.value)); }} />
       </div>
     </div>

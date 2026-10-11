@@ -4,7 +4,7 @@ import type { SimPayload, Vehicle } from "../types";
 import { VEHICLES } from "../i18n";
 
 const S = {
-  title: { en: "Delhi storm (demo)", hi: "दिल्ली का तूफ़ान (डेमो)" },
+  title: { en: "Delhi storm simulation", hi: "दिल्ली का तूफ़ान सिम्युलेशन" },
   rain: { en: "Rain", hi: "बारिश" },
   now: { en: "now", hi: "अभी" },
   next3: { en: "next 3 h", hi: "अगले 3 घं" },
@@ -12,9 +12,9 @@ const S = {
   go: { en: "Passable", hi: "पार कर सकते हैं" },
   risky: { en: "Potentially unsafe", hi: "जोखिम भरा" },
   nogo: { en: "Unsafe", hi: "असुरक्षित" },
-  posts: { en: "Demo posts", hi: "डेमो पोस्ट" },
+  posts: { en: "Community posts", hi: "सामुदायिक पोस्ट" },
   noPosts: { en: "No posts yet at this time of the storm.", hi: "तूफ़ान के इस समय तक कोई पोस्ट नहीं।" },
-  drains: { en: "Demo blocked drains", hi: "डेमो जाम नालियाँ" },
+  drains: { en: "Blocked drains", hi: "जाम नालियाँ" },
   open: { en: "open", hi: "खुला" },
   assigned: { en: "assigned", hi: "सौंपा गया" },
 } as const;
@@ -37,7 +37,7 @@ export default function SimPanel({ lang, data, vehicle, at, onClose }: Props) {
     <div className="sheet" role="dialog" aria-label={s("title", lang)}>
       <header className="sheet-head">
         <div>
-          <p className="eyebrow"><FlaskConical size={13} aria-hidden /> DEMO</p>
+          <p className="eyebrow"><FlaskConical size={13} aria-hidden /> {lang === "hi" ? "सिम्युलेशन" : "SIMULATION"}</p>
           <h2>{s("title", lang)}</h2>
         </div>
         <button className="icon-btn" onClick={onClose} aria-label={t("close", lang)}><X size={20} /></button>
@@ -61,7 +61,7 @@ export default function SimPanel({ lang, data, vehicle, at, onClose }: Props) {
           <ul className="buslist">
             {data.posts.slice(0, 6).map((p) => (
               <li key={p.id}>
-                <span className="small muted"><span className="simtag inline">DEMO</span> {p.author} · {ago(at - p.ts, lang)}</span>
+                <span className="small muted">{p.author} · {ago(at - p.ts, lang)}</span>
                 <p>{p.text}</p>
               </li>
             ))}
@@ -72,7 +72,7 @@ export default function SimPanel({ lang, data, vehicle, at, onClose }: Props) {
               <ul className="buslist">
                 {data.drains.map((d) => (
                   <li key={d.groupId} className="simdrain">
-                    <span><span className="simtag inline">DEMO</span> {d.note ?? d.groupId}</span>
+                    <span>{d.note ?? d.groupId}</span>
                     <span className="small muted">{d.severity} · {d.reportCount} · {d.assignedTo ? `${s("assigned", lang)}: ${d.assignedTo}` : s("open", lang)}</span>
                   </li>
                 ))}

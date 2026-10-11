@@ -18,7 +18,7 @@ import type { CompareRow, CoverageArea, Hotspot, LonLat, Mode, RainCity, RainInd
 
 const NO_REPORTS = new Map<string, Report>();   // spot details come from the spot itself
 const INDIA_BOUNDS: [number, number, number, number] = [68.2, 6.0, 97.6, 35.8];
-import { store, stored } from "./util";
+import { store, stored, watchUserLocation, type UserLocation } from "./util";
 
 type Panel = { kind: "none" } | { kind: "report" } | { kind: "route" } | { kind: "spot"; spot: Spot } | { kind: "hotspot"; h: Hotspot } | { kind: "bus" } | { kind: "drains" } | { kind: "account" } | { kind: "rain" } | { kind: "sim" };
 
@@ -45,7 +45,6 @@ function RainStatus({ w, lang, city, onOpen }: { w: Weather | null; lang: Lang; 
     <button type="button" className={`rainpill ${cls}${sim ? " sim" : ""}`} onClick={onOpen}
       title={`${full}\n${w.source}\n${lang === "hi" ? "पूरे भारत में बारिश देखें" : "Tap to see where it is raining across India"}`} aria-label={`${full}. ${lang === "hi" ? "पूरे भारत में बारिश देखें" : "Open rain across India"}`}>
       <Icon size={16} aria-hidden />
-      {sim && <span className="simtag inline">DEMO</span>}
       <span>{w.rainNow.toFixed(1)} mm/h</span>
       <span className="rp-extra">· {w.rainNext3h.toFixed(0)} mm {lang === "hi" ? "अगले 3 घं" : "next 3 h"}</span>
       {w.hotspotsAtRisk > 0 && <span className="rp-risk">{w.hotspotsAtRisk} {lang === "hi" ? "ख़तरे में" : "at risk"}</span>}
@@ -138,8 +137,20 @@ export default function App() {
   const [route, setRoute] = useState<RouteResult | null>(null);
   const [offline, setOffline] = useState(!navigator.onLine);
   const [err, setErr] = useState("");
+  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
+  const [navigating, setNavigating] = useState(false);
+  const [followUser, setFollowUser] = useState(false);
   const urlPos: LonLat | null = URLQ.get("lat") && URLQ.get("lon") ? [Number(URLQ.get("lon")), Number(URLQ.get("lat"))] : null;
   const center = useMemo<LonLat>(() => (city === initialCity && urlPos) || CITIES[city].center, [city]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Watch real-time device GPS location
+  useEffect(() => {
+    const unwatch = watchUserLocation(
+      (loc) => setUserLocation(loc),
+      (e) => console.debug("GPS watch:", e.message),
+    );
+    return () => unwatch();
+  }, []);
 
   function setCity(c: string) {
     setApiCity(c);
@@ -217,21 +228,40 @@ export default function App() {
     setPlaying(false);
     if (m === "sim" && city !== "delhi") setCity("delhi");
     else { setSpots([]); setWeather(null); setRoute(null); setAltState({ v: null, g: null }); setPanel({ kind: "none" }); }
-    if (m === "live") { setSim(null); setAt(0); setHotspots([]); }
+    if (m === "live") { setSim(null); setAt(0); setHotspots([]); setFrom(null); setTo(null); }
+    if (m === "sim") {
+      // Pre-feed Connaught Place -> Ajmeri Gate for demo
+      setFrom([77.2205, 28.6328]);
+      setTo([77.2235, 28.6430]);
+    }
     setModeState(m);
   }
 
-
   function openRoute(dest?: LonLat) {
     setRoute(null);
-    if (dest) setTo(dest);
+    if (dest) {
+      setTo(dest);
+      if (mode === "sim" && !from) setFrom([77.2205, 28.6328]);
+    } else if (mode === "sim" && !from && !to) {
+      setFrom([77.2205, 28.6328]);
+      setTo([77.2235, 28.6430]);
+    }
     setPanel({ kind: "route" });
   }
 
   function onPick(p: LonLat) {
-    if (picking === "from") setFrom(p);
-    if (picking === "to") setTo(p);
-    setPicking(null);
+    if (picking === "from") {
+      setFrom(p);
+      setPicking(null);
+    } else if (picking === "to") {
+      setTo(p);
+      setPicking(null);
+    } else if (panel.kind === "route") {
+      // If Route panel is open, tapping the map sets destination (to) or origin (from)
+      if (!to) setTo(p);
+      else setFrom(p);
+      setPicking(null);
+    }
   }
 
   const worstCount = spots.filter((s) => s.verdicts[vehicle] === "NO_GO").length;
@@ -242,58 +272,74 @@ export default function App() {
         rainPoints={panel.kind === "rain" ? rain?.cities ?? null : null} viewBounds={panel.kind === "rain" ? INDIA_BOUNDS : null}
         onRainPoint={(c: RainCity) => setRainSel(c.key)} lang={lang} route={route} altRoute={alt.g}
         from={panel.kind === "route" ? from : null} to={panel.kind === "route" ? to : null}
-        picking={!!picking} onPick={onPick} dark={dark} coverage={panel.kind === "route" ? coverage : null}
-        onSpot={(s) => setPanel({ kind: "spot", spot: s })} onHotspot={(h) => setPanel({ kind: "hotspot", h })} />
+        picking={!navigating && panel.kind !== "rain"} onPick={onPick} dark={dark} coverage={panel.kind === "route" ? coverage : null}
+        userLocation={userLocation} followUser={followUser}
+        onSpot={(s) => {
+          if (picking || panel.kind === "route") {
+            onPick([s.lon, s.lat]);
+            return;
+          }
+          setPanel({ kind: "spot", spot: s });
+        }}
+        onHotspot={(h) => {
+          if (picking || panel.kind === "route") {
+            onPick([h.lon, h.lat]);
+            return;
+          }
+          setPanel({ kind: "hotspot", h });
+        }} />
 
-      <header className="topbar">
-        <div className="toolbar">
-          <span className="brand" title="Can My Scooter Cross?"><Waves size={20} aria-hidden /><span className="brand-name">Can My Scooter Cross?</span></span>
-          <select className="citysel" value={city} onChange={(e) => setCity(e.target.value)} aria-label="City" disabled={mode === "sim"}>
-            {Object.entries(CITIES).map(([k, c]) => <option key={k} value={k}>{lang === "hi" ? c.hi : c.label}</option>)}
-          </select>
-          <div className="seg" role="radiogroup" aria-label="Mode">
-            <button role="radio" aria-checked={mode === "live"} className={mode === "live" ? "on" : ""} onClick={() => setMode("live")}>{t("live", lang)}</button>
-            <button role="radio" aria-checked={mode === "sim"} className={`simbtn${mode === "sim" ? " on" : ""}`} onClick={() => setMode("sim")}><FlaskConical size={14} aria-hidden /> {t("demo", lang)}</button>
-          </div>
-          <RainStatus w={weather} lang={lang} city={city} onOpen={() => { if (mode === "sim") { setPanel({ kind: "sim" }); return; } setRainSel(null); setPanel({ kind: "rain" }); }} />
-          <span className="spacer" />
-          <button className="chip icon-chip" onClick={() => setTheme(THEME_NEXT[theme])} aria-label={THEME_LABEL[theme][lang]} title={THEME_LABEL[theme][lang]}>
-            {theme === "light" ? <Sun size={17} /> : theme === "dark" ? <Moon size={17} /> : <Monitor size={17} />}
-          </button>
-          <button className="chip lang" onClick={() => setLang(lang === "en" ? "hi" : "en")} aria-label="Language">{lang === "en" ? "हिं" : "EN"}</button>
-          {authEnabled && (
-            <button className={`chip icon-chip${user ? " signed" : ""}`} onClick={() => setPanel({ kind: "account" })}
-              aria-label={user ? `${lang === "hi" ? "खाता" : "Account"}: ${user.email}` : lang === "hi" ? "साइन इन" : "Sign in"}
-              title={user ? user.email : lang === "hi" ? "साइन इन" : "Sign in"}>
-              <UserRound size={17} />
+      {!navigating && (
+        <header className="topbar">
+          <div className="toolbar">
+            <span className="brand" title="Can My Scooter Cross?"><Waves size={20} aria-hidden /><span className="brand-name">Can My Scooter Cross?</span></span>
+            <select className="citysel" value={city} onChange={(e) => setCity(e.target.value)} aria-label="City" disabled={mode === "sim"}>
+              {Object.entries(CITIES).map(([k, c]) => <option key={k} value={k}>{lang === "hi" ? c.hi : c.label}</option>)}
+            </select>
+            <div className="seg" role="radiogroup" aria-label="Mode">
+              <button role="radio" aria-checked={mode === "live"} className={mode === "live" ? "on" : ""} onClick={() => setMode("live")}>{t("live", lang)}</button>
+              <button role="radio" aria-checked={mode === "sim"} className={`simbtn${mode === "sim" ? " on" : ""}`} onClick={() => setMode("sim")}><FlaskConical size={14} aria-hidden /> {t("demo", lang)}</button>
+            </div>
+            <RainStatus w={weather} lang={lang} city={city} onOpen={() => { if (mode === "sim") { setPanel({ kind: "sim" }); return; } setRainSel(null); setPanel({ kind: "rain" }); }} />
+            <span className="spacer" />
+            <button className="chip icon-chip" onClick={() => setTheme(THEME_NEXT[theme])} aria-label={THEME_LABEL[theme][lang]} title={THEME_LABEL[theme][lang]}>
+              {theme === "light" ? <Sun size={17} /> : theme === "dark" ? <Moon size={17} /> : <Monitor size={17} />}
             </button>
+            <button className="chip lang" onClick={() => setLang(lang === "en" ? "hi" : "en")} aria-label="Language">{lang === "en" ? "हिं" : "EN"}</button>
+            {authEnabled && (
+              <button className={`chip icon-chip${user ? " signed" : ""}`} onClick={() => setPanel({ kind: "account" })}
+                aria-label={user ? `${lang === "hi" ? "खाता" : "Account"}: ${user.email}` : lang === "hi" ? "साइन इन" : "Sign in"}
+                title={user ? user.email : lang === "hi" ? "साइन इन" : "Sign in"}>
+                <UserRound size={17} />
+              </button>
+            )}
+          </div>
+          <div className="vehicles" role="radiogroup" aria-label={t("imOn", lang)}>
+            {VEHICLES.map((v) => (
+              <button key={v.id} role="radio" aria-checked={vehicle === v.id} className={`vchip${vehicle === v.id ? " on" : ""}`} onClick={() => setVehicle(v.id)}>
+                <VehicleIcon v={v.id} size={18} /> <span>{v[lang]}</span>
+              </button>
+            ))}
+          </div>
+          {offline && <div className="banner warn"><WifiOff size={16} aria-hidden /> {t("offline", lang)}</div>}
+          {!API && <div className="banner warn">{t("noApi", lang)}: set VITE_API_URL</div>}
+          {err && API && <button className="banner warn" onClick={() => setErr("")}><TriangleAlert size={16} aria-hidden /> {err}</button>}
+          {spots.length > 0 && panel.kind === "none" && (
+            <div className={`statuspill${worstCount ? " nogo" : ""}`} role="status">
+              {worstCount > 0 && <VerdictIcon cls="nogo" size={14} />}
+              {worstCount} {lang === "hi" ? "जगहें आपकी सवारी के लिए असुरक्षित" : `unsafe for ${VEHICLES.find((v) => v.id === vehicle)!.en.toLowerCase()}`} · {spots.length} {lang === "hi" ? "कुल रिपोर्ट" : "reported"}
+            </div>
           )}
-        </div>
-        <div className="vehicles" role="radiogroup" aria-label={t("imOn", lang)}>
-          {VEHICLES.map((v) => (
-            <button key={v.id} role="radio" aria-checked={vehicle === v.id} className={`vchip${vehicle === v.id ? " on" : ""}`} onClick={() => setVehicle(v.id)}>
-              <VehicleIcon v={v.id} size={18} /> <span>{v[lang]}</span>
-            </button>
-          ))}
-        </div>
-        {offline && <div className="banner warn"><WifiOff size={16} aria-hidden /> {t("offline", lang)}</div>}
-        {!API && <div className="banner warn">{t("noApi", lang)}: set VITE_API_URL</div>}
-        {err && API && <button className="banner warn" onClick={() => setErr("")}><TriangleAlert size={16} aria-hidden /> {err}</button>}
-        {spots.length > 0 && panel.kind === "none" && (
-          <div className={`statuspill${worstCount ? " nogo" : ""}`} role="status">
-            {worstCount > 0 && <VerdictIcon cls="nogo" size={14} />}
-            {worstCount} {lang === "hi" ? "जगहें आपकी सवारी के लिए असुरक्षित" : `unsafe for ${VEHICLES.find((v) => v.id === vehicle)!.en.toLowerCase()}`} · {spots.length} {lang === "hi" ? "कुल रिपोर्ट" : "reported"}
-          </div>
-        )}
-      </header>
-
-      {panel.kind === "none" && <Legend lang={lang} raised={mode === "sim"} />}
-      {mode === "sim" && sim && (panel.kind === "none" || panel.kind === "spot") && (
-        <DemoBar start={sim.scenario.start} end={sim.scenario.end} at={at || sim.now} setAt={setAt} playing={playing} setPlaying={setPlaying}
-          lang={lang} count={spots.length} simulated />
+        </header>
       )}
 
-      {panel.kind === "none" && (
+      {panel.kind === "none" && !navigating && <Legend lang={lang} raised={mode === "sim"} />}
+      {mode === "sim" && sim && !navigating && (panel.kind === "none" || panel.kind === "spot") && (
+        <DemoBar start={sim.scenario.start} end={sim.scenario.end} at={at || sim.now} setAt={setAt} playing={playing} setPlaying={setPlaying}
+          lang={lang} count={spots.length} />
+      )}
+
+      {panel.kind === "none" && !navigating && (
         <div className={`fabs${mode === "sim" ? " above-demo" : ""}`}>
           {mode === "live" && <button className="fab primary" onClick={() => setPanel({ kind: "report" })}><Camera size={20} aria-hidden /> {t("report", lang)}</button>}
           <button className="fab" onClick={() => openRoute()}><Navigation size={20} aria-hidden /> {t("safeRoute", lang)}</button>
@@ -316,10 +362,13 @@ export default function App() {
           onClose={() => setPanel({ kind: "none" })} onRoute={(p) => openRoute(p)} />
       )}
       {panel.kind === "route" && (
-        <RoutePanel vehicle={vehicle} lang={lang} mode={mode} at={mode === "sim" ? at : undefined} center={center} from={from} to={to} setFrom={setFrom} setTo={setTo}
+        <RoutePanel vehicle={vehicle} lang={lang} mode={mode} city={city} at={mode === "sim" ? at : undefined} center={center} from={from} to={to} setFrom={setFrom} setTo={setTo}
           picking={picking} setPicking={setPicking} result={route} setResult={setRoute}
-          alt={alt.v} setAlt={(v, g) => setAltState({ v, g })} showCoverage={setCoverage} onSignIn={() => setPanel({ kind: "account" })}
-          onClose={() => { setPanel({ kind: "none" }); setRoute(null); setPicking(null); setAltState({ v: null, g: null }); setCoverage(null); }} />
+          alt={alt.v} setAlt={(v, g) => setAltState({ v, g })} showCoverage={setCoverage} coverage={coverage}
+          userLocation={userLocation} navigating={navigating} setNavigating={setNavigating}
+          followUser={followUser} setFollowUser={setFollowUser}
+          onSignIn={() => setPanel({ kind: "account" })}
+          onClose={() => { setPanel({ kind: "none" }); setRoute(null); setPicking(null); setAltState({ v: null, g: null }); setCoverage(null); setNavigating(false); setFollowUser(false); }} />
       )}
       {panel.kind === "rain" && (
         <RainPanel lang={lang} data={rain} error={rainErr} onReload={() => { setRainErr(""); api.rainIndia().then(setRain).catch((e) => setRainErr(String(e.message ?? e))); }}

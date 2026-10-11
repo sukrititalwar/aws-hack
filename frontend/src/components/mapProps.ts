@@ -1,5 +1,6 @@
 import type { Lang } from "../i18n";
 import type { CoverageArea, Hotspot, LonLat, RainCity, RouteResult, Spot, Vehicle } from "../types";
+import type { UserLocation } from "../util";
 
 /** What every map engine (MapLibre / Google Maps) receives from the app. */
 export interface MapProps {
@@ -23,4 +24,8 @@ export interface MapProps {
   onRainPoint?: (c: RainCity) => void;
   /** [west, south, east, north] to fit (e.g. all of India). Back to null = return to the city view. */
   viewBounds?: [number, number, number, number] | null;
+  /** Real-time device location from GPS. */
+  userLocation?: UserLocation | null;
+  /** Whether the map camera should auto-follow the user's live position (Google Maps navigation mode). */
+  followUser?: boolean;
 }

@@ -59,8 +59,8 @@ export default function SpotSheet({ spot, mode, known, vehicle, lang, setLang, o
       <div>
         <h2>{spot.place ?? (lang === "hi" ? "पानी भराव" : "Flooded spot")}</h2>
         <p className="muted small">
-          {spot.simulated ? <span className="badge sim">{lang === "hi" ? "डेमो डेटा" : "DEMO data"}</span> : <VerifyBadge spot={spot} lang={lang} />}{" "}
-          {spot.predicted ? "" : `${spot.reportCount} ${t("reports", lang)}${spot.simulated ? " (demo)" : ""} · ${ago(spot.ageMin * 60, lang)}`}
+          {spot.simulated ? <span className="badge sim">{lang === "hi" ? "सिम्युलेशन" : "Simulated"}</span> : <VerifyBadge spot={spot} lang={lang} />}{" "}
+          {spot.predicted ? "" : `${spot.reportCount} ${t("reports", lang)} · ${ago(spot.ageMin * 60, lang)}`}
         </p>
       </div>
       <button className="icon-btn" onClick={onClose} aria-label={t("close", lang)}><X size={20} /></button>
@@ -129,6 +129,7 @@ export default function SpotSheet({ spot, mode, known, vehicle, lang, setLang, o
           <BigVerdict verdict={spot.verdicts[vehicle]} vehicle={vehicle} lang={lang} inspect={!!spot.needs_inspection} />
           <VerdictGrid verdicts={spot.verdicts} selected={vehicle} lang={lang} inspect={!!spot.needs_inspection} />
           {mode === "live" && votes}
+          <div className="actions"><button className="btn primary" onClick={() => onRoute([spot.lon, spot.lat])}><Navigation size={18} aria-hidden /> {t("routeFromHere", lang)}</button></div>
           <p className="disclaimer"><TriangleAlert size={14} aria-hidden /> {t("disclaimer", lang)}</p>
         </>
       )}

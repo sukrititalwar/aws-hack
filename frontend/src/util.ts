@@ -97,6 +97,46 @@ export function speak(text: string, lang: Lang) {
   speechSynthesis.speak(u);
 }
 
+export interface UserLocation {
+  pos: [number, number];
+  heading: number | null;
+  speed: number | null;
+  accuracy: number;
+}
+
+export function watchUserLocation(
+  onUpdate: (loc: UserLocation) => void,
+  onError?: (err: GeolocationPositionError) => void,
+): () => void {
+  if (!navigator.geolocation) return () => {};
+  const id = navigator.geolocation.watchPosition(
+    (p) => {
+      onUpdate({
+        pos: [p.coords.longitude, p.coords.latitude],
+        heading: p.coords.heading ?? null,
+        speed: p.coords.speed ?? null,
+        accuracy: p.coords.accuracy,
+      });
+    },
+    onError,
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 },
+  );
+  return () => navigator.geolocation.clearWatch(id);
+}
+
+/** Distance between two [lon, lat] points in meters. */
+export function haversineMeters(a: [number, number], b: [number, number]): number {
+  const R = 6371000;
+  const dLat = ((b[1] - a[1]) * Math.PI) / 180;
+  const dLon = ((b[0] - a[0]) * Math.PI) / 180;
+  const lat1 = (a[1] * Math.PI) / 180;
+  const lat2 = (b[1] * Math.PI) / 180;
+  const sinLat = Math.sin(dLat / 2);
+  const sinLon = Math.sin(dLon / 2);
+  const aHarv = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon;
+  return 2 * R * Math.asin(Math.sqrt(aHarv));
+}
+
 export function fmtTime(epoch: number) {
   return new Date(epoch * 1000).toLocaleString("en-IN", {
     day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true,

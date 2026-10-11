@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowUpDown, Bell, Info, LocateFixed, MapPinned, MapPinOff, Scan, Navigation, OctagonX, Route as RouteIcon, Share2, ShieldQuestion, Star, TriangleAlert, UserRound, X } from "lucide-react";
+import { ArrowLeft, ArrowUpDown, Bell, ChevronDown, ChevronUp, Info, LocateFixed, MapPinned, MapPinOff, Scan, Navigation, OctagonX, Route as RouteIcon, Share2, ShieldQuestion, Star, Target, TriangleAlert, UserRound, Volume2, VolumeX, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, geocode, PREDICTIVE_ROUTE_ENABLED } from "../api";
 import { authEnabled, useAuth } from "../auth";
@@ -7,7 +7,33 @@ import { KIND_ICON } from "./AccountSheet";
 import { PREDICTIVE_UI, predictiveReason, t, VERDICT_UI, vehicleInfo, type Lang } from "../i18n";
 import { VehicleIcon, VerdictIcon } from "../icons";
 import type { CompareRow, CoverageArea, LonLat, Mode, PlaceKind, PredictiveRiskLevel, PredictiveRouteResult, RouteResult, Vehicle } from "../types";
-import { getPosition } from "../util";
+import { getPosition, haversineMeters, speak, type UserLocation } from "../util";
+
+export const DELHI_COVERAGE_AREAS: CoverageArea[] = [
+  { name: "Central Delhi: Minto Bridge, ITO, Pragati Maidan, Moolchand", bbox: [77.195, 28.555, 77.265, 28.645] },
+  { name: "North-west Delhi: DTU, Rohini, Samaypur Badli", bbox: [77.095, 28.715, 77.165, 28.770] },
+];
+
+export const DEMO_PRESETS = [
+  {
+    id: "minto",
+    name: { en: "CP ➔ Ajmeri Gate (Minto Bridge)", hi: "CP ➔ अजमेरी गेट (मिंटो ब्रिज)" },
+    desc: { en: "81 cm water hazard · Safe detour", hi: "81 सेमी बाढ़ · सुरक्षित चक्कर" },
+    from: [77.2205, 28.6328] as LonLat,
+    fromName: { en: "Connaught Place (CP)", hi: "कनॉट प्लेस (CP)" },
+    to: [77.2235, 28.6430] as LonLat,
+    toName: { en: "Ajmeri Gate (via Minto Bridge)", hi: "अजमेरी गेट (मिंटो ब्रिज होकर)" },
+  },
+  {
+    id: "moolchand",
+    name: { en: "Def Col ➔ Lajpat (Moolchand)", hi: "डिफेंस कॉलोनी ➔ लाजपत (मूलचंद)" },
+    desc: { en: "45 cm water · Open drain hazard", hi: "45 सेमी बाढ़ · खुला नाला जोखिम" },
+    from: [77.2280, 28.5720] as LonLat,
+    fromName: { en: "Defence Colony", hi: "डिफेंस कॉलोनी" },
+    to: [77.2370, 28.5640] as LonLat,
+    toName: { en: "Lajpat Nagar", hi: "लाजपत नगर" },
+  },
+];
 
 type Field = "from" | "to";
 
@@ -15,6 +41,7 @@ interface Props {
   vehicle: Vehicle;
   lang: Lang;
   mode: Mode;
+  city?: string;
   at?: number;
   center: LonLat;
   from: LonLat | null;
@@ -28,6 +55,12 @@ interface Props {
   alt: Vehicle | null;
   setAlt: (v: Vehicle | null, g: CompareRow["geometry"] | null) => void;
   showCoverage: (areas: CoverageArea[] | null) => void;
+  coverage?: CoverageArea[] | null;
+  userLocation?: UserLocation | null;
+  navigating?: boolean;
+  setNavigating?: (b: boolean) => void;
+  followUser?: boolean;
+  setFollowUser?: (b: boolean) => void;
   onSignIn: () => void;
   onClose: () => void;
 }
@@ -40,7 +73,7 @@ const STATUS: Record<CompareRow["status"], { en: string; hi: string }> = {
 };
 
 // Older API builds prefixed the coverage warning onto the note; strip it so coverage and safety stay separate.
-const COVERAGE_PREFIX = "One of your points is outside the routable demo area. ";
+const COVERAGE_PREFIX = "One of your points is outside the routable area. ";
 
 type Summary = { cls: "clear" | "detour" | "bad" | "unknown"; title: { en: string; hi: string } };
 
@@ -199,6 +232,7 @@ function PlaceField({ field, value, label, text, setText, p }: { field: Field; v
       <div className="row">
         <span className={`endpoint inline ${field}`}>{field === "from" ? "A" : "B"}</span>
         <input id={`pf-${field}`} className="input" placeholder={field === "from" ? t("yourLocation", p.lang) : t("search", p.lang)} value={text} autoComplete="off"
+          autoCorrect="off" autoCapitalize="words" spellCheck={false}
           enterKeyHint="search" onFocus={(e) => e.currentTarget.select()}
           onChange={(e) => { setText(e.target.value); setTyped(true); }}
           onKeyDown={async (e) => { if (e.key === "Enter" && text.trim()) { setTyped(false); setBusy(true); setHits(await geocode(text.trim(), p.center)); setBusy(false); } }} />
@@ -226,6 +260,27 @@ function PlaceField({ field, value, label, text, setText, p }: { field: Field; v
   );
 }
 
+function DelhiCoverageCard({ lang, showCoverage, coverageActive }: { lang: Lang; showCoverage: (a: CoverageArea[] | null) => void; coverageActive?: boolean }) {
+  return (
+    <div className="delhi-coverage-box">
+      <div className="delhi-coverage-header">
+        <span>📍 {lang === "hi" ? "दिल्ली कवरेज क्षेत्र (सक्रिय)" : "Active Delhi Coverage Areas"}</span>
+        <button className="btn ghost small-btn" type="button" onClick={() => showCoverage(coverageActive ? null : DELHI_COVERAGE_AREAS)}>
+          <Scan size={14} aria-hidden /> {coverageActive ? (lang === "hi" ? "कवरेज छिपाएँ" : "Hide boundary") : (lang === "hi" ? "मैप पर दिखाएँ" : "Show on map")}
+        </button>
+      </div>
+      <div className="delhi-zone-item">
+        <strong>1. Central Delhi</strong>
+        <span>Minto Bridge, CP, ITO, Pragati Maidan, Moolchand, India Gate, Lajpat Nagar</span>
+      </div>
+      <div className="delhi-zone-item">
+        <strong>2. North-West Delhi</strong>
+        <span>DTU (Delhi Technological Univ), Rohini Sectors 11/16/17/18, Samaypur Badli</span>
+      </div>
+    </div>
+  );
+}
+
 export default function RoutePanel(p: Props) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -237,31 +292,79 @@ export default function RoutePanel(p: Props) {
   const [predictionErr, setPredictionErr] = useState("");
   const [fromText, setFromText] = useState("");
   const [toText, setToText] = useState("");
+  const [muted, setMuted] = useState(false);
+  const [lastSpokenSpot, setLastSpokenSpot] = useState<string>("");
   const L = p.lang;
   const veh = vehicleInfo(p.vehicle);
   const r = p.result;
   const ran = useRef("");
 
-  // Like Google Maps: the start is your current location unless you pick another one.
+  function loadPreset(preset: typeof DEMO_PRESETS[0]) {
+    ran.current = "";
+    p.setResult(null);
+    p.setAlt(null, null);
+    p.setFrom(preset.from);
+    setFromText(preset.fromName[L]);
+    p.setTo(preset.to);
+    setToText(preset.toName[L]);
+    p.setPicking(null);
+  }
+
+  // Pre-feed values in simulation mode, or use device location in live mode
   useEffect(() => {
+    if (p.mode === "sim") {
+      p.setFrom([77.2205, 28.6328]);
+      setFromText(L === "hi" ? "कनॉट प्लेस (CP)" : "Connaught Place (CP)");
+      p.setTo([77.2235, 28.6430]);
+      setToText(L === "hi" ? "अजमेरी गेट (मिंटो ब्रिज होकर)" : "Ajmeri Gate (via Minto Bridge)");
+      return;
+    }
     if (p.from) return;
+    if (p.userLocation) {
+      p.setFrom(p.userLocation.pos);
+      setFromText(t("yourLocation", L));
+      return;
+    }
     setFromText(t("locating", L));
     getPosition().then((pos) => { p.setFrom(pos); setFromText(t("yourLocation", L)); }).catch(() => setFromText(""));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  // a point chosen on the map or from saved places has no name yet
-  useEffect(() => { if (p.from && !fromText) setFromText(t("droppedPin", L)); }, [p.from]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (p.to && !toText) setToText(t("droppedPin", L)); }, [p.to]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [p.mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ...and the route is worked out as soon as both ends are known, no extra button press
+  // When points are tapped on the map, update input texts & invalidate previous route
+  const prevFrom = useRef<LonLat | null>(p.from);
+  const prevTo = useRef<LonLat | null>(p.to);
   useEffect(() => {
-    if (!p.from || !p.to || p.picking || p.result) return;
-    const key = `${p.from}|${p.to}|${p.vehicle}|${p.mode}`;
+    if (p.from && (!prevFrom.current || prevFrom.current[0] !== p.from[0] || prevFrom.current[1] !== p.from[1])) {
+      prevFrom.current = p.from;
+      p.setResult(null);
+      setFromText((cur) => {
+        if (cur && cur !== t("locating", L) && cur !== t("yourLocation", L) && !cur.startsWith(t("droppedPin", L))) return cur;
+        return `${t("droppedPin", L)} (${p.from![1].toFixed(4)}, ${p.from![0].toFixed(4)})`;
+      });
+    }
+  }, [p.from, L]);
+
+  useEffect(() => {
+    if (p.to && (!prevTo.current || prevTo.current[0] !== p.to[0] || prevTo.current[1] !== p.to[1])) {
+      prevTo.current = p.to;
+      p.setResult(null);
+      setToText((cur) => {
+        if (cur && !cur.startsWith(t("droppedPin", L))) return cur;
+        return `${t("droppedPin", L)} (${p.to![1].toFixed(4)}, ${p.to![0].toFixed(4)})`;
+      });
+    }
+  }, [p.to, L]);
+
+  // Route calculation triggers whenever both ends are chosen and not in picking mode
+  useEffect(() => {
+    if (!p.from || !p.to || p.picking) return;
+    const key = `${p.from[0].toFixed(5)},${p.from[1].toFixed(5)}|${p.to[0].toFixed(5)},${p.to[1].toFixed(5)}|${p.vehicle}|${p.mode}|${p.at}`;
     if (ran.current === key) return;
     ran.current = key;
     go();
-  }, [p.from, p.to, p.vehicle, p.mode, p.picking, p.result]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [p.from, p.to, p.vehicle, p.mode, p.at, p.picking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function swap() {
+    ran.current = "";
     const [f, t2, ft, tt] = [p.from, p.to, fromText, toText];
     p.setFrom(t2); p.setTo(f); setFromText(tt); setToText(ft);
   }
@@ -310,6 +413,94 @@ export default function RoutePanel(p: Props) {
     }
   }
 
+  // Live hazard distance monitoring
+  const leg = r?.safe ?? r?.normal ?? null;
+  const spotsOnRoute = leg?.spots_on_route ?? [];
+
+  const liveDistMeters = (p.userLocation && p.to)
+    ? haversineMeters(p.userLocation.pos, p.to)
+    : leg?.distance_m ?? 0;
+  const liveDistKm = (liveDistMeters / 1000).toFixed(1);
+  const liveSpeedKmh = p.userLocation?.speed != null ? Math.round(p.userLocation.speed * 3.6) : 0;
+
+  const closestHazard = (p.userLocation && spotsOnRoute.length > 0)
+    ? spotsOnRoute.map((s) => ({
+        spot: s,
+        dist: haversineMeters(p.userLocation!.pos, [s.lon, s.lat]),
+      })).sort((a, b) => a.dist - b.dist)[0]
+    : null;
+  const hazardAhead = closestHazard && closestHazard.dist <= 600 ? closestHazard : null;
+
+  // Voice announcements for water hazards ahead
+  useEffect(() => {
+    if (!p.navigating || muted || !hazardAhead) return;
+    const spotKey = `${hazardAhead.spot.spotId}-${Math.round(hazardAhead.dist / 150)}`;
+    if (lastSpokenSpot === spotKey) return;
+    setLastSpokenSpot(spotKey);
+    const msg = L === "hi"
+      ? `सावधान: ${Math.round(hazardAhead.dist)} मीटर आगे पानी भराव है, गहराई लगभग ${hazardAhead.spot.depth_high} सेंटीमीटर।`
+      : `Caution: Flooded road ${Math.round(hazardAhead.dist)} meters ahead, depth about ${hazardAhead.spot.depth_high} centimeters.`;
+    speak(msg, L);
+  }, [p.navigating, muted, hazardAhead, lastSpokenSpot, L]);
+
+  // Active Google Maps style Navigation HUD
+  if (p.navigating && r) {
+    const arrivalTime = new Date(Date.now() + (leg?.duration_min ?? 5) * 60000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const etaMin = Math.max(1, Math.round(leg?.duration_min ?? 5));
+    return (
+      <>
+        <div className="nav-hud-top" role="status">
+          <div className="nav-hud-direction">
+            <div className="nav-hud-icon">
+              <Navigation size={20} />
+            </div>
+            <div className="nav-hud-text">
+              <h4>{hazardAhead ? (L === "hi" ? "आगे पानी भराव का जोखिम" : "Water Hazard Ahead") : (L === "hi" ? "सुझाया सुरक्षित रास्ता" : "Following Safe Route")}</h4>
+              <p>{toText || (L === "hi" ? "मंज़िल की ओर" : "Heading to destination")}</p>
+            </div>
+            <button className="icon-btn" onClick={() => setMuted(!muted)} aria-label={muted ? "Unmute" : "Mute"}>
+              {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+            </button>
+          </div>
+          {hazardAhead && (
+            <div className="nav-alert-banner">
+              <TriangleAlert size={18} />
+              <span>{L === "hi"
+                ? `${hazardAhead.spot.place ?? "पानी भरी जगह"} (${Math.round(hazardAhead.dist)} मी आगे, ~${hazardAhead.spot.depth_high} सेमी)`
+                : `${hazardAhead.spot.place ?? "Flooded spot"} in ${Math.round(hazardAhead.dist)}m (~${hazardAhead.spot.depth_high} cm)`}</span>
+            </div>
+          )}
+        </div>
+
+        {!p.followUser && (
+          <button className="fab-recenter" onClick={() => p.setFollowUser?.(true)} aria-label={L === "hi" ? "मेरी लोकेशन पर आएँ" : "Recenter on my location"} title={L === "hi" ? "मेरी लोकेशन पर आएँ" : "Recenter"}>
+            <Target size={22} />
+          </button>
+        )}
+
+        <div className="nav-hud-bottom">
+          <div className="nav-stats-row">
+            <div>
+              <span className="nav-eta-big">{etaMin} <small style={{ fontSize: "1rem" }}>min</small></span>
+              <span className="nav-sub-stats">({liveDistKm} km · {arrivalTime})</span>
+            </div>
+            <span className="nav-speed-badge">
+              {liveSpeedKmh > 0 ? `${liveSpeedKmh} km/h` : (L === "hi" ? "लाइव GPS" : "Live GPS")}
+            </span>
+          </div>
+          <div className="nav-actions-row">
+            <button className="btn-nav-recenter" onClick={() => p.setFollowUser?.(true)}>
+              <Target size={16} /> {p.followUser ? (L === "hi" ? "फॉलो जारी" : "Following") : (L === "hi" ? "रीसेंटर करें" : "Re-center")}
+            </button>
+            <button className="btn-nav-exit" onClick={() => { p.setNavigating?.(false); p.setFollowUser?.(false); }}>
+              <X size={18} /> {L === "hi" ? "समाप्त" : "Exit"}
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   // While choosing a point, shrink to a bar so the map stays tappable.
   if (p.picking) {
     return (
@@ -323,13 +514,21 @@ export default function RoutePanel(p: Props) {
     );
   }
 
-  const leg = r?.safe ?? r?.normal ?? null;
   const sum = r ? summarise(r) : null;
   const SumIcon = sum ? SUMMARY_ICON[sum.cls] : Navigation;
-  const outside = !!r && (r.out_of_area ?? r.note.startsWith(COVERAGE_PREFIX));
-  const note = r ? r.note.replace(COVERAGE_PREFIX, "") : "";
+  const outside = !!r && (r.out_of_area ?? (r.note.startsWith(COVERAGE_PREFIX) || r.note.startsWith("One of your points is outside the routable")));
+  const note = r ? r.note.replace(COVERAGE_PREFIX, "").replace("One of your points is outside the routable area. ", "").replace("One of your points is outside the routable demo area. ", "") : "";
   const showNormal = !!(r?.normal && r.safe && r.safe.distance_m !== r.normal.distance_m);
   const selectedPrediction = prediction?.vehicle_options.find((option) => option.vehicle === p.vehicle);
+
+  const [collapsed, setCollapsed] = useState(false);
+
+  // On mobile screens, start in peek mode once route is calculated so map is visible
+  useEffect(() => {
+    if (r && window.innerWidth < 760) {
+      setCollapsed(true);
+    }
+  }, [r]);
 
   const shareText = r && p.from && p.to && leg
     ? [
@@ -341,6 +540,50 @@ export default function RoutePanel(p: Props) {
       ].filter(Boolean).join("\n")
     : "";
 
+  // Mobile compact peek mode: leaves map clear with large Start Navigation button
+  if (collapsed && r && sum && !(outside && !r.normal)) {
+    return (
+      <div className="sheet route-sheet peek" role="dialog" aria-label={t("safeRoute", L)}>
+        <div className="route-peek-head" onClick={() => setCollapsed(false)}>
+          <div className="sum-head" style={{ margin: 0, flex: 1, minWidth: 0 }}>
+            <span className="sum-icon"><SumIcon size={18} aria-hidden /></span>
+            <strong style={{ fontSize: "0.92rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sum.title[L]}</strong>
+          </div>
+          <div className="row gap" style={{ flexShrink: 0 }}>
+            <button className="icon-btn sm" onClick={(e) => { e.stopPropagation(); setCollapsed(false); }} aria-label="Expand details" title="Expand">
+              <ChevronUp size={18} />
+            </button>
+            <button className="icon-btn sm" onClick={p.onClose} aria-label={t("close", L)} title={t("close", L)}>
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        {leg && (
+          <div className="row gap" style={{ justifyContent: "space-between", alignItems: "baseline", margin: "6px 0 8px" }}>
+            <span className="sum-big" style={{ fontSize: "1.15rem" }}>
+              {(leg.distance_m / 1000).toFixed(1)} km · {Math.round(leg.duration_min)} min
+            </span>
+            <button className="link small" onClick={() => setCollapsed(false)}>
+              {L === "hi" ? "विवरण देखें ▲" : "Details ▲"}
+            </button>
+          </div>
+        )}
+
+        {leg && (
+          <button className="btn-nav-start" style={{ width: "100%", margin: "0" }} onClick={() => {
+            p.setNavigating?.(true);
+            p.setFollowUser?.(true);
+            speak(L === "hi" ? "नेविगेशन शुरू हो गया है। सुरक्षित रास्ता अनुसरण करें।" : "Starting navigation. Follow the safe route.", L);
+          }}>
+            <Navigation size={18} style={{ fill: "currentColor" }} />
+            <span>{L === "hi" ? "नेविगेशन शुरू करें (लाइव GPS)" : "Start Navigation (Live GPS)"}</span>
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="sheet route-sheet" role="dialog" aria-label={t("safeRoute", L)}>
       <header className="sheet-head">
@@ -348,11 +591,30 @@ export default function RoutePanel(p: Props) {
           <p className="eyebrow">{t("safeRoute", L)}</p>
           <h2 className="row gap"><VehicleIcon v={p.vehicle} size={22} /> {veh[L]}</h2>
         </div>
-        <button className="icon-btn" onClick={p.onClose} aria-label={t("close", L)}><X size={20} /></button>
+        <div className="row gap" style={{ flexShrink: 0 }}>
+          {r && (
+            <button className="icon-btn sm" onClick={() => setCollapsed(true)} aria-label="Collapse to map" title="Collapse to map">
+              <ChevronDown size={18} />
+            </button>
+          )}
+          <button className="icon-btn sm" onClick={p.onClose} aria-label={t("close", L)}><X size={18} /></button>
+        </div>
       </header>
 
       {!r && (
         <>
+          <div className="demo-presets-card">
+            <span className="eyebrow" style={{ color: "var(--primary)" }}>⚡ {L === "hi" ? "डेमो एक-क्लिक रास्ते" : "Demo 1-Click Routes"}</span>
+            <div className="row gap" style={{ marginTop: 4 }}>
+              {DEMO_PRESETS.map((dp) => (
+                <button key={dp.id} type="button" className="preset-btn" onClick={() => loadPreset(dp)}>
+                  <span className="preset-name">{dp.name[L]}</span>
+                  <span className="preset-tag">{dp.desc[L]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <PlaceField field="from" value={p.from} label={t("from", L)} text={fromText} setText={setFromText} p={p} />
           <button className="btn ghost swapbtn" onClick={swap} disabled={!p.from && !p.to} aria-label={t("swap", L)} title={t("swap", L)}>
             <ArrowUpDown size={16} aria-hidden /> {t("swap", L)}
@@ -362,6 +624,7 @@ export default function RoutePanel(p: Props) {
             <Navigation size={18} aria-hidden /> {busy ? (L === "hi" ? "खोज रहे हैं…" : "Checking route…") : t("findRoute", L)}
           </button>
           {err && <p className="error-box">{err}</p>}
+          <DelhiCoverageCard lang={L} showCoverage={p.showCoverage} coverageActive={!!p.coverage} />
         </>
       )}
 
@@ -425,6 +688,31 @@ export default function RoutePanel(p: Props) {
               <p className="sum-note">{L === "hi" ? "रिपोर्ट न होने का मतलब सूखी सड़क नहीं है। अंडरपास पर ध्यान दें।" : "No reports isn't the same as dry roads. Take care at underpasses."}</p>
             )}
           </section>
+
+          {leg && (
+            <button className="btn-nav-start" style={{ width: "100%", margin: "12px 0 6px" }} onClick={() => {
+              p.setNavigating?.(true);
+              p.setFollowUser?.(true);
+              speak(L === "hi" ? "नेविगेशन शुरू हो गया है। सुरक्षित रास्ता अनुसरण करें।" : "Starting navigation. Follow the safe route.", L);
+            }}>
+              <Navigation size={20} style={{ fill: "currentColor" }} />
+              <span>{L === "hi" ? "नेविगेशन शुरू करें (लाइव GPS)" : "Start Navigation (Live GPS)"}</span>
+            </button>
+          )}
+
+          <DelhiCoverageCard lang={L} showCoverage={p.showCoverage} coverageActive={!!p.coverage} />
+
+          <div className="demo-presets-card" style={{ marginTop: 8 }}>
+            <span className="eyebrow" style={{ color: "var(--primary)" }}>⚡ {L === "hi" ? "अन्य डेमो रास्ता देखें" : "Try Another Demo Route"}</span>
+            <div className="row gap" style={{ marginTop: 4 }}>
+              {DEMO_PRESETS.map((dp) => (
+                <button key={dp.id} type="button" className="preset-btn" onClick={() => loadPreset(dp)}>
+                  <span className="preset-name">{dp.name[L]}</span>
+                  <span className="preset-tag">{dp.desc[L]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
 
           {PREDICTIVE_ROUTE_ENABLED && p.mode === "live" && p.from && p.to && (
             <section className="rsec">

@@ -3,7 +3,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 import { mapStyle } from "../api";
 import type { MapProps } from "./mapProps";
-import { endpointElement, hotspotElement, rainElement, spotElement } from "./markers";
+import { endpointElement, hotspotElement, rainElement, spotElement, userLocationElement } from "./markers";
 import type { LonLat } from "../types";
 
 interface Props extends MapProps {
@@ -19,6 +19,7 @@ export default function MapView(p: Props) {
   const hotMarkers = useRef<maplibregl.Marker[]>([]);
   const pinMarkers = useRef<maplibregl.Marker[]>([]);
   const rainMarkers = useRef<maplibregl.Marker[]>([]);
+  const userMarker = useRef<maplibregl.Marker | null>(null);
   const hadBounds = useRef(false);
   const cb = useRef(p);
   cb.current = p;
@@ -63,7 +64,7 @@ export default function MapView(p: Props) {
       if (cb.current.picking) cb.current.onPick([e.lngLat.lng, e.lngLat.lat]);
     });
     map.current = m;
-    return () => m.remove();
+    return () => { userMarker.current?.remove(); m.remove(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -119,7 +120,43 @@ export default function MapView(p: Props) {
     });
   }, [p.from, p.to]);
 
-  // ---- routes ----
+  // ---- live user GPS location marker & camera follow ----
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    if (!p.userLocation) {
+      userMarker.current?.remove();
+      userMarker.current = null;
+      return;
+    }
+    const { pos, heading } = p.userLocation;
+    if (!userMarker.current) {
+      userMarker.current = new maplibregl.Marker({ element: userLocationElement(heading) })
+        .setLngLat(pos)
+        .addTo(m);
+    } else {
+      userMarker.current.setLngLat(pos);
+      const el = userMarker.current.getElement();
+      const headingEl = el.querySelector<HTMLDivElement>(".me-puck-heading");
+      if (heading != null && !isNaN(heading)) {
+        if (headingEl) {
+          headingEl.style.transform = `rotate(${heading}deg)`;
+        } else {
+          const arr = document.createElement("div");
+          arr.className = "me-puck-heading";
+          arr.style.transform = `rotate(${heading}deg)`;
+          el.insertBefore(arr, el.querySelector(".me-puck-dot"));
+        }
+      } else if (headingEl) {
+        headingEl.remove();
+      }
+    }
+
+    if (p.followUser) {
+      m.easeTo({ center: pos, duration: 800 });
+    }
+  }, [p.userLocation, p.followUser]);
+
   function drawRoute(fit = true) {
     const m = map.current;
     if (!m || !m.getSource("route-safe")) return;
