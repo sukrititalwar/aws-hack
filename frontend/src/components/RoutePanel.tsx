@@ -132,7 +132,20 @@ function Compare({ rows, lang, current, alt, setAlt }: { rows: CompareRow[]; lan
   );
 }
 
-const fmt = (p: LonLat | null) => (p ? `${p[1].toFixed(4)}, ${p[0].toFixed(4)}` : "");
+
+const GMODE: Partial<Record<Vehicle, string>> = { pedestrian: "walking", bicycle: "bicycling", scooter: "two-wheeler", ev_scooter: "two-wheeler" };
+
+/** Google Maps directions link. For a flood detour, a few points sampled from OUR safe route are passed as
+ *  waypoints so Google follows the dry path instead of re-choosing the usual (flooded) road. */
+function googleMapsUrl(from: LonLat, to: LonLat, vehicle: Vehicle, line: LonLat[] | undefined, detour: boolean): string {
+  const q = new URLSearchParams({ api: "1", origin: `${from[1]},${from[0]}`, destination: `${to[1]},${to[0]}`, travelmode: GMODE[vehicle] ?? "driving" });
+  if (detour && line && line.length > 12) {
+    const n = Math.min(8, Math.floor(line.length / 12));
+    const via = Array.from({ length: n }, (_, i) => line[Math.round(((i + 1) * (line.length - 1)) / (n + 1))]);
+    q.set("waypoints", via.map((c) => `${c[1].toFixed(5)},${c[0].toFixed(5)}`).join("|"));
+  }
+  return `https://www.google.com/maps/dir/?${q.toString()}`;
+}
 
 const near = (a: LonLat, b: LonLat) => Math.abs(a[0] - b[0]) < 0.0003 && Math.abs(a[1] - b[1]) < 0.0003;   // ~30 m
 
@@ -732,7 +745,7 @@ export default function RoutePanel(p: Props) {
         `Can My Scooter Cross? · ${veh.en} route · checked ${clock(r.checked_at)}`,
         `${sum!.title.en}. ${(leg.distance_m / 1000).toFixed(1)} km · ${Math.round(leg.duration_min)} min.`,
         note,
-        `From ${fmt(p.from)} to ${fmt(p.to)}: https://www.google.com/maps/dir/${p.from[1]},${p.from[0]}/${p.to[1]},${p.to[0]}`,
+        `Open in Google Maps: ${googleMapsUrl(p.from, p.to, p.vehicle, leg.geometry?.coordinates as LonLat[] | undefined, showNormal)}`,
         "Based on reports, not a guarantee. If unsure, don't cross.",
       ].filter(Boolean).join("\n")
     : "";
@@ -1042,6 +1055,12 @@ export default function RoutePanel(p: Props) {
           )}
 
           <div className="actions">
+            {p.from && p.to && leg && (
+              <a className="btn grow" target="_blank" rel="noreferrer"
+                href={googleMapsUrl(p.from, p.to, p.vehicle, leg.geometry?.coordinates as LonLat[] | undefined, showNormal)}>
+                <MapPinned size={18} aria-hidden /> {L === "hi" ? "Google Maps में खोलें" : "Open in Google Maps"}
+              </a>
+            )}
             {shareText && (
               <a className="btn primary grow" target="_blank" rel="noreferrer" href={`https://wa.me/?text=${encodeURIComponent(shareText)}`}>
                 <Share2 size={18} aria-hidden /> {L === "hi" ? "रास्ता भेजें" : "Share route"}
