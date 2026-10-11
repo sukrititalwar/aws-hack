@@ -33,6 +33,7 @@ from functions.risk_scheduler.app import fetch_rain, risk_of  # noqa: E402
 REPORTS: dict[str, dict] = {}
 DRAINS: dict[str, dict] = {}          # DrainReady, in memory; dispatcher access code is "demo"
 DRAIN_AFTER_CLEAR = {"on": True}
+PLACES: dict[str, list[dict]] = {}     # saved addresses per mock user (email); dev mode only
 PHOTOS: dict[str, bytes] = {}
 HOTSPOTS: dict[str, list] = {}
 WEATHER: dict[str, dict] = {}
@@ -185,10 +186,46 @@ class H(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "content-type,x-admin-token")
-        self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "content-type,x-admin-token,authorization")
+        self.send_header("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS")
         self.end_headers()
         self.wfile.write(data)
+
+    def _mock_user(self):
+        """Dev-only auth: 'Authorization: Bearer mock:<email>' (VITE_AUTH_MODE=mock). The real API uses Cognito."""
+        a = self.headers.get("Authorization", "")
+        return a[len("Bearer mock:"):] if a.startswith("Bearer mock:") and len(a) > 12 else None
+
+    def _me(self, method, path, raw):
+        user = self._mock_user()
+        if not user:
+            return self._send(401, {"message": "Unauthorized"})
+        if path == "/me" and method == "GET":
+            return self._send(200, {"sub": user, "email": user, "groups": []})
+        if path == "/me/places" and method == "GET":
+            return self._send(200, {"places": PLACES.get(user, [])})
+        if path == "/me/places" and method == "POST":
+            b = json.loads(raw)
+            if not (1 <= len(str(b.get("label") or "").strip()) <= 40) or b.get("kind") not in ("home", "work", "other"):
+                return self._send(400, {"error": "Give the place a short name (1 to 40 characters)."})
+            mine = PLACES.setdefault(user, [])
+            replaced = [p["placeId"] for p in mine if b["kind"] in ("home", "work") and p["kind"] == b["kind"]]
+            mine[:] = [p for p in mine if p["placeId"] not in replaced]
+            if len(mine) >= 20:
+                return self._send(409, {"error": "You can save up to 20 places. Delete one first."})
+            place = {"placeId": uuid.uuid4().hex[:12], "label": b["label"][:40], "kind": b["kind"], "address": b.get("address"),
+                     "lat": float(b["lat"]), "lon": float(b["lon"]), "city": b.get("city"), "createdAt": int(time.time())}
+            mine.append(place)
+            mine.sort(key=lambda p: (["home", "work", "other"].index(p["kind"]), p["createdAt"]))
+            return self._send(200, {"place": place, "replaced": replaced})
+        m = re.fullmatch(r"/me/places/([\w-]+)", path)
+        if m and method == "DELETE":
+            PLACES[user] = [p for p in PLACES.get(user, []) if p["placeId"] != m.group(1)]
+            return self._send(200, {"ok": True})
+        return self._send(404, {"error": "not found"})
+
+    def do_DELETE(self):
+        self._me("DELETE", urlparse(self.path).path, b"")
 
     def do_OPTIONS(self):
         self._send(204, b"")
@@ -198,6 +235,8 @@ class H(BaseHTTPRequestHandler):
 
     def do_GET(self):
         u = urlparse(self.path)
+        if u.path.startswith("/me"):
+            return self._me("GET", u.path, b"")
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         city = q.get("city", "delhi")
         if u.path == "/spots":
@@ -244,6 +283,8 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         u = urlparse(self.path)
         raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        if u.path.startswith("/me"):
+            return self._me("POST", u.path, raw)
         if u.path == "/drains/upload-url":
             b = json.loads(raw)
             rid = uuid.uuid4().hex[:16]
@@ -257,17 +298,43 @@ class H(BaseHTTPRequestHandler):
             PHOTOS[rid] = raw[s_:e_ + 2]
             r = DRAINS[rid]
             time.sleep(1.2)
-            r.update({"status": "open", "severity": "blocked", "blockage_type": "garbage", "confidence": "medium", "standing_water": True,
-                      "reasoning": "LOCAL MOCK: grating covered by plastic bags and silt, so water cannot enter.",
-                      "reasoning_hi": "लोकल मॉक: जाली प्लास्टिक और गाद से ढकी है।", "rainNext24h": 22.0})
+            if ARGS.bedrock_down:   # same labelled fallback the Lambda uses when Bedrock cannot answer
+                from common import fallback
+                r.update({"status": "open", "rainNext24h": 22.0,
+                          **{k: v for k, v in fallback.rate_report([("Trash", 93.0), ("Drain", 88.0)],
+                                                                   "AccessDeniedException: Operation not allowed").items()
+                             if k not in ("is_drain_photo",)}})
+            else:
+                r.update({"status": "open", "severity": "blocked", "blockage_type": "garbage", "confidence": "medium", "standing_water": True,
+                          "reasoning": "LOCAL MOCK: grating covered by plastic bags and silt, so water cannot enter.",
+                          "reasoning_hi": "लोकल मॉक: जाली प्लास्टिक और गाद से ढकी है।", "rainNext24h": 22.0})
             r["groupId"] = drains.find_group(r, list(DRAINS.values())) or rid
             return self._send(204, b"")
-        m = re.fullmatch(r"/drains/([\w-]+)/(assign|after-url)", u.path)
+        m = re.fullmatch(r"/drains/([\w-]+)/retry", u.path)
+        if m:
+            r = DRAINS.get(m.group(1))
+            if not r or r["status"] not in ("error", "analysing"):
+                return self._send(409, {"error": "This report is not stuck, so there is nothing to retry."})
+            r["status"] = "open"
+            return self._send(200, {"ok": True, "status": "analysing"})
+        m = re.fullmatch(r"/drains/([\w-]+)/(assign|after-url|confirm)", u.path)
         if m:
             if self.headers.get("x-admin-token") != "demo":
                 return self._send(403, {"error": "Dispatcher access only. (local access code: demo)"})
             gid, action = m.groups()
             members = [r for r in DRAINS.values() if (r.get("groupId") or r["reportId"]) == gid]
+            if action == "confirm":
+                body = json.loads(raw)
+                if not any(r.get("afterKey") for r in members):
+                    return self._send(409, {"error": "There is no after-photo to confirm yet."})
+                for r in members:
+                    if body.get("decision") == "clear":
+                        r.update({"status": "cleared", "clearedAt": int(time.time()), "clearanceVerified": False, "awaitingReview": False,
+                                  "afterNote": "Confirmed clear by a dispatcher from the after-photo (manual, not AI-verified)."})
+                    else:
+                        r.update({"awaitingReview": False, "afterRejected": True,
+                                  "afterNote": "A dispatcher rejected the after-photo. Send another photo."})
+                return self._send(200, {"ok": True})
             if action == "assign":
                 for r in members:
                     r.update({"status": "assigned", "assignedTo": json.loads(raw)["worker"], "assignedAt": int(time.time())})
@@ -280,7 +347,11 @@ class H(BaseHTTPRequestHandler):
             PHOTOS[gid + "-after"] = raw[s_:e_ + 2]
             for r in DRAINS.values():
                 if (r.get("groupId") or r["reportId"]) == gid:
-                    r.update({"status": "cleared", "clearedAt": int(time.time()), "clearanceVerified": True})
+                    if ARGS.bedrock_down:   # never auto-clear without AI verification: wait for a dispatcher
+                        r.update({"afterKey": "x", "awaitingReview": True,
+                                  "afterNote": "Automatic verification is unavailable, so a dispatcher must confirm this clearance from the photos."})
+                    else:
+                        r.update({"status": "cleared", "clearedAt": int(time.time()), "clearanceVerified": True, "afterKey": "x"})
             return self._send(204, b"")
         if u.path == "/reports/upload-url":
             b = json.loads(raw)
@@ -342,6 +413,7 @@ def main():
     ap.add_argument("--port", type=int, default=8787)
     ap.add_argument("--bedrock", action="store_true", help="use real Bedrock for uploaded photos")
     ap.add_argument("--social", action="store_true", help="poll live social/news feeds every 10 min")
+    ap.add_argument("--bedrock-down", action="store_true", help="simulate Bedrock being unavailable: drains use the labelled fallback")
     ap.add_argument("--unsure", action="store_true", help="mock photo analysis returns an unclear, low-confidence result")
     ap.add_argument("--storm", action="store_true", help="simulate heavy rain at every hotspot")
     ARGS = ap.parse_args()

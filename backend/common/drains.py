@@ -64,28 +64,81 @@ def priority(members: list[dict], hotspots: list[dict] | None = None) -> dict:
             "nearHotspot": near[0]["name"] if near else None}
 
 
-def build_groups(reports: list[dict], hotspots: list[dict] | None = None) -> list[dict]:
-    """Collapse reports into one row per blockage, ranked by priority (open/assigned first)."""
-    by_group: dict[str, list[dict]] = {}
+SKIP = ("analysing", "rejected", "error")   # not (yet) a real blockage
+
+
+def _status(ms: list[dict]) -> str:
+    st = {m["status"] for m in ms}
+    if st == {"cleared"}:
+        return "cleared"
+    if "assigned" in st:
+        return "assigned"
+    if "open" in st:
+        return "open"
+    return "cleared" if "cleared" in st else ms[0]["status"]
+
+
+def cluster(reports: list[dict]) -> list[list[dict]]:
+    """Reports -> blockage groups (each sorted oldest first).
+
+    Starts from the stored groupId, then merges OPEN groups that are within GROUP_RADIUS_M of each
+    other. The analyser groups at write time, but a DynamoDB index is eventually consistent, so two
+    near-simultaneous reports of one drain can both start their own group; merging on read makes
+    the list correct regardless. Cleared groups are never merged (a new report near a cleared drain
+    is a repeat blockage)."""
+    by_gid: dict[str, list[dict]] = {}
     for r in reports:
-        if r.get("status") in ("analysing", "rejected"):
+        if r.get("status") in SKIP:
             continue
-        by_group.setdefault(r.get("groupId") or r["reportId"], []).append(r)
+        by_gid.setdefault(r.get("groupId") or r["reportId"], []).append(r)
+    groups = [sorted(ms, key=lambda m: m["ts"]) for ms in by_gid.values()]
+    idx = [i for i, g in enumerate(groups) if _status(g) in OPEN]
+    parent = {i: i for i in idx}
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def close(a, b):
+        return any(geo.haversine_m(x["lon"], x["lat"], y["lon"], y["lat"]) <= GROUP_RADIUS_M for x in a for y in b)
+
+    for n, i in enumerate(idx):
+        for j in idx[n + 1:]:
+            if find(i) != find(j) and close(groups[i], groups[j]):
+                parent[find(j)] = find(i)
+    merged: dict[int, list[dict]] = {}
+    for i, g in enumerate(groups):
+        merged.setdefault(find(i) if i in parent else i, []).extend(g)
+    return [sorted(ms, key=lambda m: m["ts"]) for ms in merged.values()]
+
+
+def build_groups(reports: list[dict], hotspots: list[dict] | None = None) -> list[dict]:
+    """One row per blockage, ranked by priority (open/assigned first)."""
     rows = []
-    for gid, members in by_group.items():
-        members.sort(key=lambda m: m["ts"])
+    for members in cluster(reports):
         head = members[0]
         pr = priority(members, hotspots)
-        status = head["status"]
+        status = _status(members)
+        assigned = [m for m in members if m.get("assignedTo")]
+        cleared = [m for m in members if m.get("clearedAt")]
         rows.append({
-            "groupId": gid, "city": head["city"], "status": status,
+            "groupId": head.get("groupId") or head["reportId"], "city": head["city"], "status": status,
             "lat": round(sum(m["lat"] for m in members) / len(members), 6),
             "lon": round(sum(m["lon"] for m in members) / len(members), 6),
             "severity": max((m["severity"] for m in members if m.get("severity")),
                             key=lambda s: SEVERITY_WEIGHT.get(s, 0), default=None),
             "blockage_type": head.get("blockage_type"), "note": head.get("note"),
-            "firstReported": head["ts"], "assignedTo": head.get("assignedTo"),
-            "assignedAt": head.get("assignedAt"), "clearedAt": head.get("clearedAt"),
+            "firstReported": head["ts"],
+            "assignedTo": max(assigned, key=lambda m: m.get("assignedAt") or 0)["assignedTo"] if assigned else None,
+            "assignedAt": max((m.get("assignedAt") or 0 for m in assigned), default=None),
+            "clearedAt": max((m["clearedAt"] for m in cleared), default=None),
+            "analysisMode": head.get("analysisMode", "bedrock"),
+            "needsReview": any(m.get("needsReview") for m in members) and status != "cleared",
+            "awaitingReview": any(m.get("awaitingReview") for m in members) and status != "cleared",
+            "afterNote": next((m["afterNote"] for m in reversed(members) if m.get("afterNote")), None),
+            "clearedBy": ("ai" if any(m.get("clearanceVerified") for m in members) else "manual") if status == "cleared" else None,
             "reportIds": [m["reportId"] for m in members], **pr,
         })
     rows.sort(key=lambda g: (g["status"] == "cleared", -g["score"], g["firstReported"]))
@@ -93,22 +146,26 @@ def build_groups(reports: list[dict], hotspots: list[dict] | None = None) -> lis
 
 
 def metrics(reports: list[dict], now: float) -> dict:
-    """The three impact numbers, computed from group heads."""
-    groups: dict[str, list[dict]] = {}
-    for r in reports:
-        if r.get("status") not in ("analysing", "rejected"):
-            groups.setdefault(r.get("groupId") or r["reportId"], []).append(r)
-    heads = {g: sorted(m, key=lambda x: x["ts"])[0] for g, m in groups.items()}
-    cleared = [h for h in heads.values() if h["status"] == "cleared" and h.get("clearedAt")]
+    """The three impact numbers (plus how clearances were verified), from merged groups."""
+    groups = cluster(reports)
+    heads = []
+    for ms in groups:
+        h = dict(ms[0])
+        h["status"] = _status(ms)
+        h["clearedAt"] = max((m["clearedAt"] for m in ms if m.get("clearedAt")), default=None)
+        h["ai_verified"] = any(m.get("clearanceVerified") for m in ms)
+        h["rainNext24h"] = max((float(m.get("rainNext24h") or 0) for m in ms), default=0.0)
+        heads.append(h)
+    cleared = [h for h in heads if h["status"] == "cleared" and h.get("clearedAt")]
     hours = [(h["clearedAt"] - h["ts"]) / 3600 for h in cleared]
     # "Before rainfall": cleared while rain was forecast at report time, and within 24 h of the
     # report (i.e. inside the forecast window). This is based on the forecast we stored, not on
     # a rain gauge, and the dashboard says so.
-    rain_cases = [h for h in cleared if float(h.get("rainNext24h") or 0) >= RAIN_URGENT_MM]
+    rain_cases = [h for h in cleared if h["rainNext24h"] >= RAIN_URGENT_MM]
     before_rain = [h for h in rain_cases if h["clearedAt"] - h["ts"] <= 24 * 3600]
     # Repeat blockages: a newer blockage within 50 m of an earlier cleared one inside 30 days.
     repeats = 0
-    for h in heads.values():
+    for h in heads:
         for c in cleared:
             if c is h or h["ts"] < c["clearedAt"]:
                 continue
@@ -116,11 +173,13 @@ def metrics(reports: list[dict], now: float) -> dict:
                     geo.haversine_m(h["lon"], h["lat"], c["lon"], c["lat"]) <= REPEAT_RADIUS_M):
                 repeats += 1
                 break
-    open_now = [h for h in heads.values() if h["status"] in OPEN]
+    open_now = [h for h in heads if h["status"] in OPEN]
     return {
         "reported": len(heads), "open": len(open_now),
         "assigned": sum(1 for h in open_now if h["status"] == "assigned"),
         "cleared": len(cleared),
+        "cleared_ai_verified": sum(1 for h in cleared if h["ai_verified"]),
+        "cleared_manual": sum(1 for h in cleared if not h["ai_verified"]),
         "median_hours_to_clear": round(statistics.median(hours), 1) if hours else None,
         "rain_forecast_cases": len(rain_cases), "cleared_before_rain": len(before_rain),
         "repeat_blockages": repeats,

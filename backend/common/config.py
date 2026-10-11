@@ -5,6 +5,9 @@ import os
 REGION = os.environ.get("AWS_REGION", "ap-south-1")
 BEDROCK_REGION = os.environ.get("BEDROCK_REGION", REGION)
 BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "apac.anthropic.claude-sonnet-4-20250514-v1:0")
+# Claude 5-family models reject non-default sampling parameters (temperature/top_p) with a
+# ValidationException, so we do NOT send temperature unless this is set (older models only).
+BEDROCK_TEMPERATURE = float(os.environ["BEDROCK_TEMPERATURE"]) if os.environ.get("BEDROCK_TEMPERATURE") else None
 PHOTOS_BUCKET = os.environ.get("PHOTOS_BUCKET", "")
 DATA_BUCKET = os.environ.get("DATA_BUCKET", PHOTOS_BUCKET)
 REPORTS_TABLE = os.environ.get("REPORTS_TABLE", "Reports")
@@ -12,6 +15,7 @@ HOTSPOTS_TABLE = os.environ.get("HOTSPOTS_TABLE", "Hotspots")
 SUBSCRIPTIONS_TABLE = os.environ.get("SUBSCRIPTIONS_TABLE", "Subscriptions")
 RATELIMIT_TABLE = os.environ.get("RATELIMIT_TABLE", "RateLimits")
 DRAINS_TABLE = os.environ.get("DRAINS_TABLE", "Drains")
+PLACES_TABLE = os.environ.get("PLACES_TABLE", "SavedPlaces")
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")   # shared secret for dispatcher actions (demo-grade auth)
 ALERTS_TOPIC_ARN = os.environ.get("ALERTS_TOPIC_ARN", "")
 ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "*")

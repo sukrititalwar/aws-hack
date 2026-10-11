@@ -100,6 +100,17 @@ These were created separately with the CLI, so `sam delete` won't remove them:
 
 ## Known blocker: Bedrock
 
+> **Update, 11 Oct (live API test + code fix, not yet redeployed).** A smoke report sent to the live API
+> was accepted, uploaded to S3 and analysed, then ended as `Analysis failed: ValidationException`:
+> **not** the quota error below. The most likely cause is that the code sent `temperature: 0`, which
+> Claude 5-family models reject (non-default sampling parameters return a 400 `ValidationException`).
+> That would have failed *even after* the quota is raised. It is fixed in code (no sampling
+> parameters are sent), DrainReady now falls back to a clearly labelled Rekognition rating when
+> Bedrock cannot answer, and failures show their real cause. **Redeploy (`sam build && sam deploy`)
+> to pick this up**, then run `scripts/smoke_drains.py` against the API. This could not be confirmed
+> from CloudWatch logs (no AWS access on the machine that made the fix), so check
+> `sam logs -n DrainAnalyzeFunction --stack-name scooter-cross` after redeploying.
+
 Every Amazon Bedrock on-demand quota on this new account is **0**, so every model call fails with `Operation not allowed`. This affects:
 
 - **Photo → depth → verdict**

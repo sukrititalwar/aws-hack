@@ -99,7 +99,22 @@ AWS-native alternative: AWS End User Messaging Social → link a WhatsApp Busine
 ## 7. DrainReady
 Reporting needs no setup. Dispatchers open **🕳️ Blocked drains**, tap a blockage, expand **Dispatcher**, paste the **AdminToken**, then assign a worker and upload the after-photo. The drain is only marked cleared if the after-photo shows a clear drain. Check the numbers on the **Impact** tab. Local test: run `scripts/local_api.py` (access code `demo`).
 
-## 8. Troubleshooting
+## 8. Sign-in and saved places (Amazon Cognito)
+The stack creates a Cognito user pool and a web app client. After `sam deploy`:
+```bash
+aws cloudformation describe-stacks --stack-name scooter-cross --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" --output text
+```
+Set that value as **`VITE_COGNITO_CLIENT_ID`** (and `VITE_COGNITO_REGION=ap-south-1`) in Amplify, then redeploy the frontend. Without it the sign-in button is hidden. New users get a confirmation code by email (Cognito's built-in sender allows ~50 emails/day: fine for a demo). Signed-in users get saved places (Home, Work, others, max 20) that show as one-tap chips in the route screen. `VITE_AUTH_MODE=mock` is for local development only: never set it in Amplify.
+
+## 9. Testing DrainReady on real AWS
+```bash
+python scripts/smoke_drains.py --api <ApiUrl> --admin-token <AdminToken> --photo ~/drain.jpg
+```
+It checks upload, S3, analysis (and which path ran: AI, labelled fallback, or an explicit error with the real cause), retry, dispatcher assignment, and that an after-photo only clears a drain when AI verification succeeds. If Bedrock is unavailable the report is kept, labelled "AI analysis unavailable", and a dispatcher confirms the clearance manually. Check the `analysisError` field to see the real AWS error. Logs: `sam logs --stack-name scooter-cross -n DrainAnalyzeFunction --tail`.
+
+**Bedrock notes:** the code sends no `temperature` (Claude 5-family models reject it with `ValidationException`; set `BEDROCK_TEMPERATURE` only for older models). A brand-new account may also have every on-demand Bedrock quota at 0 until AWS approves a quota request.
+
+## 10. Troubleshooting
 ```bash
 sam logs --stack-name scooter-cross -n AnalyzeFunction --tail
 ```

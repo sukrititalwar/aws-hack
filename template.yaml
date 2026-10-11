@@ -67,6 +67,7 @@ Globals:
         SOCIAL_MODEL_ID: !Ref SocialModelId
         WA_SESSIONS_TABLE: !Ref WhatsAppSessionsTable
         DRAINS_TABLE: !Ref DrainsTable
+        PLACES_TABLE: !Ref SavedPlacesTable
         ADMIN_TOKEN: !Ref AdminToken
         WA_SSM_PREFIX: /scooter-cross/whatsapp
         APP_URL: !Ref AppUrl
@@ -197,12 +198,87 @@ Resources:
     Properties:
       CorsConfiguration:
         AllowOrigins: [!Ref AllowedOrigin]
-        AllowMethods: [GET, POST, OPTIONS]
-        AllowHeaders: [content-type, x-admin-token]
+        AllowMethods: [GET, POST, DELETE, OPTIONS]
+        AllowHeaders: [content-type, x-admin-token, authorization]
         MaxAge: 600
       DefaultRouteSettings:
         ThrottlingBurstLimit: 50
         ThrottlingRateLimit: 20
+      # Only /me/* routes opt in. The gateway verifies the Cognito token (signature, issuer,
+      # audience, expiry) before the Lambda runs; every other route stays public.
+      Auth:
+        Authorizers:
+          CognitoJwt:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+              audience:
+                - !Ref UserPoolClient
+
+  # ---------------- Accounts (Amazon Cognito) ----------------
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "${AWS::StackName}-users"
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      UsernameConfiguration: { CaseSensitive: false }
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - { Name: verified_email, Priority: 1 }
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireUppercase: false
+          RequireSymbols: false
+      Schema:
+        - { Name: email, AttributeDataType: String, Required: true, Mutable: true }
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: !Sub "${AWS::StackName}-web"
+      GenerateSecret: false             # a browser app cannot keep a secret
+      PreventUserExistenceErrors: ENABLED
+      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+      TokenValidityUnits: { AccessToken: hours, IdToken: hours, RefreshToken: days }
+
+  SavedPlacesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: userId, AttributeType: S }
+        - { AttributeName: placeId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: userId, KeyType: HASH }
+        - { AttributeName: placeId, KeyType: RANGE }
+
+  PlacesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: functions.places.app.handler
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref SavedPlacesTable }
+      Events:
+        Me:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /me, Method: GET, Auth: { Authorizer: CognitoJwt } }
+        List:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /me/places, Method: GET, Auth: { Authorizer: CognitoJwt } }
+        Add:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /me/places, Method: POST, Auth: { Authorizer: CognitoJwt } }
+        Delete:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: "/me/places/{id}", Method: DELETE, Auth: { Authorizer: CognitoJwt } }
 
   UploadUrlFunction:
     Type: AWS::Serverless::Function
@@ -455,6 +531,9 @@ Resources:
               Resource:
                 - !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/drains/*"
                 - !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/drains-after/*"
+            - Effect: Allow   # lets HeadObject say "missing" (404) instead of "forbidden" (403) for the retry check
+              Action: s3:ListBucket
+              Resource: !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}"
       Events:
         UploadUrl:
           Type: HttpApi
@@ -474,6 +553,12 @@ Resources:
         AfterUrl:
           Type: HttpApi
           Properties: { ApiId: !Ref Api, Path: "/drains/{id}/after-url", Method: POST }
+        Retry:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: "/drains/{id}/retry", Method: POST }
+        Confirm:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: "/drains/{id}/confirm", Method: POST }
 
   DrainAnalyzeFunction:
     Type: AWS::Serverless::Function
@@ -489,8 +574,8 @@ Resources:
               Resource:
                 - !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/drains/*"
                 - !Sub "arn:aws:s3:::${AWS::StackName}-photos-${AWS::AccountId}/drains-after/*"
-            - Effect: Allow
-              Action: [rekognition:DetectModerationLabels]
+            - Effect: Allow   # DetectLabels powers the labelled fallback when Bedrock is unavailable
+              Action: [rekognition:DetectModerationLabels, rekognition:DetectLabels]
               Resource: "*"
             - Effect: Allow
               Action: [bedrock:InvokeModel]
@@ -518,6 +603,11 @@ Resources:
                   - { Name: prefix, Value: drains-after/ }
 
 Outputs:
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: Set as VITE_COGNITO_CLIENT_ID in Amplify
+    Value: !Ref UserPoolClient
   WhatsAppTwilioWebhook:
     Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/whatsapp/twilio"
   ApiUrl:

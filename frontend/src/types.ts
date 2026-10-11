@@ -150,18 +150,37 @@ export interface CoverageArea {
 }
 export type Theme = "system" | "light" | "dark";
 
+export type PlaceKind = "home" | "work" | "other";
+export interface SavedPlace {
+  placeId: string;
+  label: string;
+  kind: PlaceKind;
+  address?: string;
+  lat: number;
+  lon: number;
+  city?: string;
+  createdAt: number;
+}
+
 export interface DrainRow {
   groupId: string;
   city: string;
-  status: "open" | "assigned" | "cleared" | "analysing" | "rejected";
+  status: "open" | "assigned" | "cleared" | "analysing" | "rejected" | "error";
   lat: number;
   lon: number;
   severity: "partial" | "blocked" | null;
+  /** How the photo was assessed: full AI, basic image labels (fallback), or nobody yet. */
+  analysisMode?: "bedrock" | "rekognition_labels" | "manual";
+  analysisError?: string | null;
+  needsReview?: boolean;
+  awaitingReview?: boolean;
+  clearedBy?: "ai" | "manual" | null;
   blockage_type?: string | null;
   note?: string | null;
   firstReported: number;
   assignedTo?: string | null;
   clearedAt?: number | null;
+  reportIds?: string[];
   reportCount: number;
   score: number;
   reasons: string[];
@@ -183,6 +202,8 @@ export interface DrainMetrics {
   open: number;
   assigned: number;
   cleared: number;
+  cleared_ai_verified?: number;
+  cleared_manual?: number;
   median_hours_to_clear: number | null;
   rain_forecast_cases: number;
   cleared_before_rain: number;

@@ -1,9 +1,12 @@
-import { ArrowLeft, Bell, Info, LocateFixed, MapPinned, MapPinOff, Scan, Navigation, OctagonX, Route as RouteIcon, Share2, ShieldQuestion, TriangleAlert, X } from "lucide-react";
+import { ArrowLeft, Bell, Info, LocateFixed, MapPinned, MapPinOff, Scan, Navigation, OctagonX, Route as RouteIcon, Share2, ShieldQuestion, Star, TriangleAlert, UserRound, X } from "lucide-react";
 import { useState } from "react";
 import { api, geocode, hasLocationKey } from "../api";
+import { authEnabled, useAuth } from "../auth";
+import { usePlaces } from "../places";
+import { KIND_ICON } from "./AccountSheet";
 import { t, VERDICT_UI, vehicleInfo, type Lang } from "../i18n";
 import { VehicleIcon, VerdictIcon } from "../icons";
-import type { CompareRow, CoverageArea, LonLat, Mode, RouteResult, Vehicle } from "../types";
+import type { CompareRow, CoverageArea, LonLat, Mode, PlaceKind, RouteResult, Vehicle } from "../types";
 import { getPosition } from "../util";
 
 type Field = "from" | "to";
@@ -25,6 +28,7 @@ interface Props {
   alt: Vehicle | null;
   setAlt: (v: Vehicle | null, g: CompareRow["geometry"] | null) => void;
   showCoverage: (areas: CoverageArea[] | null) => void;
+  onSignIn: () => void;
   onClose: () => void;
 }
 
@@ -90,6 +94,69 @@ function Compare({ rows, lang, current, alt, setAlt }: { rows: CompareRow[]; lan
 
 const fmt = (p: LonLat | null) => (p ? `${p[1].toFixed(4)}, ${p[0].toFixed(4)}` : "");
 
+const near = (a: LonLat, b: LonLat) => Math.abs(a[0] - b[0]) < 0.0003 && Math.abs(a[1] - b[1]) < 0.0003;   // ~30 m
+
+/** One-tap saved places for this field, and "save this point" for signed-in users. */
+function SavedChips({ value, set, lang, onSignIn }: { value: LonLat | null; set: (p: LonLat) => void; lang: Lang; onSignIn: () => void }) {
+  const { user } = useAuth();
+  const { places, add } = usePlaces();
+  const [saving, setSaving] = useState(false);
+  const [kind, setKind] = useState<PlaceKind>("home");
+  const [name, setName] = useState("");
+  const [msg, setMsg] = useState("");
+  if (!authEnabled) return null;
+  if (!user) {
+    return (
+      <div className="row gap chips savedchips">
+        <button className="chip" onClick={onSignIn}><UserRound size={16} aria-hidden /> {lang === "hi" ? "सेव की हुई जगहों के लिए साइन इन करें" : "Sign in to use saved places"}</button>
+      </div>
+    );
+  }
+  const already = value ? places.find((x) => near([x.lon, x.lat], value)) : undefined;
+  async function save() {
+    if (!value) return;
+    setMsg("");
+    try {
+      await add({ label: kind === "other" ? name.trim() : kind === "home" ? "Home" : "Work", kind, lat: value[1], lon: value[0] });
+      setSaving(false);
+      setName("");
+    } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+  }
+  return (
+    <div className="savedchips">
+      {places.length > 0 && (
+        <div className="row gap chips" aria-label={lang === "hi" ? "सेव की हुई जगहें" : "Saved places"}>
+          {places.map((x) => {
+            const Icon = KIND_ICON[x.kind];
+            return <button key={x.placeId} className={`chip${value && near([x.lon, x.lat], value) ? " active" : ""}`} onClick={() => set([x.lon, x.lat])} title={x.address || x.label}><Icon size={16} aria-hidden /> <span>{x.label}</span></button>;
+          })}
+        </div>
+      )}
+      {value && !already && !saving && (
+        <div className="row gap chips" style={{ marginTop: 6 }}>
+          <button className="chip" onClick={() => setSaving(true)}><Star size={16} aria-hidden /> {lang === "hi" ? "इस जगह को सेव करें" : "Save this place"}</button>
+        </div>
+      )}
+      {saving && (
+        <div style={{ marginTop: 6 }}>
+          <div className="row gap chips" role="radiogroup">
+            {(["home", "work", "other"] as PlaceKind[]).map((k) => {
+              const Icon = KIND_ICON[k];
+              return <button key={k} role="radio" aria-checked={kind === k} className={`chip${kind === k ? " active" : ""}`} onClick={() => setKind(k)}><Icon size={16} aria-hidden /> {k === "home" ? "Home" : k === "work" ? "Work" : lang === "hi" ? "अन्य" : "Other"}</button>;
+            })}
+          </div>
+          {kind === "other" && <input className="input" style={{ marginTop: 6 }} maxLength={40} placeholder={lang === "hi" ? "नाम" : "Name"} value={name} onChange={(e) => setName(e.target.value)} />}
+          <div className="row gap" style={{ marginTop: 6 }}>
+            <button className="btn primary" disabled={kind === "other" && !name.trim()} onClick={save}>{lang === "hi" ? "सेव" : "Save"}</button>
+            <button className="btn" onClick={() => setSaving(false)}>{lang === "hi" ? "रद्द" : "Cancel"}</button>
+          </div>
+        </div>
+      )}
+      {msg && <p className="error-box" role="alert">{msg}</p>}
+    </div>
+  );
+}
+
 function PlaceField({ field, value, label, p }: { field: Field; value: LonLat | null; label: string; p: Props }) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<{ title: string; pos: LonLat }[]>([]);
@@ -124,6 +191,7 @@ function PlaceField({ field, value, label, p }: { field: Field; value: LonLat | 
           <MapPinned size={16} aria-hidden /> {t("tapMap", p.lang)}
         </button>
       </div>
+      <SavedChips value={value} set={set} lang={p.lang} onSignIn={p.onSignIn} />
     </div>
   );
 }

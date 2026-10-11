@@ -12,11 +12,42 @@ from functools import lru_cache
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import BotoCoreError, ClientError
 
 from . import config
 
 log = logging.getLogger()
 MAX_SIDE = 1568
+
+
+class AIUnavailable(Exception):
+    """Bedrock could not answer (no model access, quota 0, throttled, bad request, ...).
+
+    Carries the real AWS error code and message so the app can show a clearly labelled fallback
+    and operators can see the actual cause instead of a bare exception class name."""
+
+    def __init__(self, code: str, detail: str):
+        super().__init__(f"{code}: {detail}")
+        self.code, self.detail = code, detail
+
+
+def inference_config(max_tokens: int) -> dict:
+    cfg = {"maxTokens": max_tokens}
+    if config.BEDROCK_TEMPERATURE is not None:
+        cfg["temperature"] = config.BEDROCK_TEMPERATURE
+    return cfg
+
+
+def converse(**kwargs) -> dict:
+    """bedrock-runtime converse() with failures turned into AIUnavailable (code + message)."""
+    try:
+        return _bedrock().converse(**kwargs)
+    except (ClientError, BotoCoreError) as e:
+        err = getattr(e, "response", {}).get("Error", {}) if isinstance(e, ClientError) else {}
+        code = err.get("Code") or type(e).__name__
+        msg = (err.get("Message") or str(e)).replace("\n", " ")[:240]
+        log.error("Bedrock %s: %s", code, msg)
+        raise AIUnavailable(code, msg) from e
 PROMPT_PATH = os.path.join(os.path.dirname(__file__), "..", "prompts", "depth_prompt.txt")
 
 HAZARDS = {"open_drain_or_manhole_risk", "strong_current", "submerged_vehicle",
@@ -100,11 +131,11 @@ def estimate_depth(image_bytes: bytes, city: str, place: str | None) -> tuple[di
     last_err = None
     for attempt in range(2):
         metrics["attempts"] += 1
-        r = _bedrock().converse(
+        r = converse(
             modelId=config.BEDROCK_MODEL_ID,
             system=[{"text": system_prompt()}],
             messages=messages,
-            inferenceConfig={"temperature": 0, "maxTokens": 1200},
+            inferenceConfig=inference_config(1200),
         )
         usage = r.get("usage", {})
         metrics["input_tokens"] += usage.get("inputTokens", 0)
@@ -158,8 +189,8 @@ def classify_drain(image_bytes: bytes, city: str) -> tuple[dict, dict]:
     t0 = time.time()
     last = None
     for attempt in range(2):
-        r = _bedrock().converse(modelId=config.BEDROCK_MODEL_ID, system=[{"text": drain_prompt()}], messages=messages,
-                                inferenceConfig={"temperature": 0, "maxTokens": 600})
+        r = converse(modelId=config.BEDROCK_MODEL_ID, system=[{"text": drain_prompt()}], messages=messages,
+                     inferenceConfig=inference_config(600))
         text = "".join(c.get("text", "") for c in r["output"]["message"]["content"])
         try:
             a = extract_json(text)

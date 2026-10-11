@@ -253,7 +253,11 @@ button.banner { cursor: pointer; }
   font-size: 0.95rem; font-weight: 600; background: var(--surface); color: var(--text); box-shadow: var(--shadow); cursor: pointer; text-decoration: none;
   white-space: nowrap;
 }
-@media (max-width: 420px) { .fab { padding: 0 10px; gap: 6px; font-size: 0.9rem; } }
+@media (max-width: 420px) {
+  /* up to five buttons (report, route, buses, drains, WhatsApp): let labels wrap instead of overflowing */
+  .fab { padding: 0 8px; gap: 6px; font-size: 0.88rem; min-width: 0; white-space: normal; line-height: 1.15; text-align: center; }
+  .fab.round { flex-basis: 46px; }
+}
 .fab.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); }
 .fab.primary:hover { background: var(--primary-hover); }
 .fab.round { flex: 0 0 52px; padding: 0; }
@@ -470,3 +474,20 @@ button.banner { cursor: pointer; }
 .metrics { display: flex; flex-direction: column; gap: 8px; }
 .metric { display: flex; gap: 12px; align-items: center; padding: 12px; border-radius: 12px; background: var(--surface-2); }
 .metric b { font-size: 1.8rem; font-weight: 700; min-width: 56px; text-align: center; }
+
+/* DrainReady status + fallback labelling */
+.review-tag { display: inline-flex; align-items: center; gap: 4px; color: var(--risky); font-weight: 700; }
+.spinner.inline { display: inline-block; width: 18px; height: 18px; border-width: 3px; margin: 0 8px 0 0; vertical-align: -3px; }
+
+/* ---------- account + saved places ---------- */
+.authform { display: flex; flex-direction: column; gap: 4px; }
+.authlinks { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.placelist { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.placelist li { display: grid; grid-template-columns: 34px 1fr auto auto; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.pl-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--surface-2); }
+.pl-main { display: flex; flex-direction: column; min-width: 0; }
+.pl-main .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icon-btn.sm { width: 36px; height: 36px; }
+.savedchips { margin-top: 6px; }
+.savedchips .chip { max-width: 100%; }
+.savedchips .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 9ch; }

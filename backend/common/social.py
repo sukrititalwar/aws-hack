@@ -225,11 +225,11 @@ def _bedrock():
 
 
 def extract(post: dict, city: str) -> dict:
-    """Bedrock text extraction, temperature 0."""
+    """Bedrock text extraction (deterministic by prompt: no sampling parameters are sent)."""
     msg = f"City: {config.CITIES[city]['label']}. Source: {post['source']} ({post['author_type']}). Post: {post['text']}"
-    r = _bedrock().converse(modelId=config.SOCIAL_MODEL_ID, system=[{"text": EXTRACT_PROMPT}],
-                            messages=[{"role": "user", "content": [{"text": msg}]}],
-                            inferenceConfig={"temperature": 0, "maxTokens": 400})
+    r = depth.converse(modelId=config.SOCIAL_MODEL_ID, system=[{"text": EXTRACT_PROMPT}],
+                       messages=[{"role": "user", "content": [{"text": msg}]}],
+                       inferenceConfig=depth.inference_config(400))
     text = "".join(c.get("text", "") for c in r["output"]["message"]["content"])
     return depth.extract_json(text)
 

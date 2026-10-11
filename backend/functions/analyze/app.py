@@ -138,7 +138,9 @@ def _process(bucket: str, key: str):
         _notify_watchers(report, fields)
     except Exception as e:  # never leave a report stuck in "analysing"
         log.exception("analyze failed for %s", report_id)
-        db.update_report(report_id, {"status": "error", "rejection_reason": f"Analysis failed: {type(e).__name__}"})
+        reason = (f"AI analysis is unavailable right now ({e.code}). Please try again later."
+                  if isinstance(e, depth.AIUnavailable) else f"Analysis failed: {type(e).__name__}")
+        db.update_report(report_id, {"status": "error", "rejection_reason": reason, "analysisError": str(e)[:300]})
 
 
 def handler(event, _ctx):

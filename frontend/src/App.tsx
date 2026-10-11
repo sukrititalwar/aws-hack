@@ -1,7 +1,9 @@
-import { Bus, Camera, CloudRain, History, Layers, MessageCircle, Monitor, Moon, Navigation, Radio, Shield, Sun, TriangleAlert, Waves, WifiOff, X } from "lucide-react";
+import { Bus, Camera, CloudRain, History, Layers, MessageCircle, Monitor, Moon, Navigation, Radio, Shield, Sun, TriangleAlert, UserRound, Waves, WifiOff, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, API, CITIES, setCity as setApiCity, WHATSAPP_JOIN, WHATSAPP_NUMBER } from "./api";
+import AccountSheet from "./components/AccountSheet";
 import BusSheet from "./components/BusSheet";
+import { authEnabled, useAuth } from "./auth";
 import DrainSheet from "./components/DrainSheet";
 import DemoBar from "./components/DemoBar";
 import MapView from "./components/MapView";
@@ -13,7 +15,7 @@ import { VehicleIcon, VerdictIcon } from "./icons";
 import type { CompareRow, CoverageArea, Hotspot, LonLat, Mode, Report, RouteResult, Spot, Theme, Vehicle, Weather } from "./types";
 import { getPosition, store, stored } from "./util";
 
-type Panel = { kind: "none" } | { kind: "report" } | { kind: "route" } | { kind: "spot"; spot: Spot } | { kind: "hotspot"; h: Hotspot } | { kind: "bus" } | { kind: "drains" };
+type Panel = { kind: "none" } | { kind: "report" } | { kind: "route" } | { kind: "spot"; spot: Spot } | { kind: "hotspot"; h: Hotspot } | { kind: "bus" } | { kind: "drains" } | { kind: "account" };
 
 // WhatsApp replies link here as ?city=..&lat=..&lon=..
 const URLQ = new URLSearchParams(location.search);
@@ -105,6 +107,7 @@ function useTheme() {
 
 export default function App() {
   const { theme, setTheme, dark } = useTheme();
+  const { user } = useAuth();
   const [coverage, setCoverage] = useState<CoverageArea[] | null>(null);
   const [vehicle, setVehicleState] = useState<Vehicle>(stored<Vehicle>("vehicle", "scooter"));
   const [lang, setLangState] = useState<Lang>(stored<Lang>("lang", "en"));
@@ -233,6 +236,13 @@ export default function App() {
             {theme === "light" ? <Sun size={17} /> : theme === "dark" ? <Moon size={17} /> : <Monitor size={17} />}
           </button>
           <button className="chip lang" onClick={() => setLang(lang === "en" ? "hi" : "en")} aria-label="Language">{lang === "en" ? "हिं" : "EN"}</button>
+          {authEnabled && (
+            <button className={`chip icon-chip${user ? " signed" : ""}`} onClick={() => setPanel({ kind: "account" })}
+              aria-label={user ? `${lang === "hi" ? "खाता" : "Account"}: ${user.email}` : lang === "hi" ? "साइन इन" : "Sign in"}
+              title={user ? user.email : lang === "hi" ? "साइन इन" : "Sign in"}>
+              <UserRound size={17} />
+            </button>
+          )}
         </div>
         <div className="vehicles" role="radiogroup" aria-label={t("imOn", lang)}>
           {VEHICLES.map((v) => (
@@ -283,9 +293,10 @@ export default function App() {
       {panel.kind === "route" && (
         <RoutePanel vehicle={vehicle} lang={lang} mode={mode} at={at} center={center} from={from} to={to} setFrom={setFrom} setTo={setTo}
           picking={picking} setPicking={setPicking} result={route} setResult={setRoute}
-          alt={alt.v} setAlt={(v, g) => setAltState({ v, g })} showCoverage={setCoverage}
+          alt={alt.v} setAlt={(v, g) => setAltState({ v, g })} showCoverage={setCoverage} onSignIn={() => setPanel({ kind: "account" })}
           onClose={() => { setPanel({ kind: "none" }); setRoute(null); setPicking(null); setAltState({ v: null, g: null }); setCoverage(null); }} />
       )}
+      {panel.kind === "account" && <AccountSheet lang={lang} center={center} onClose={() => setPanel({ kind: "none" })} onRoute={(p) => openRoute(p)} />}
       {panel.kind === "drains" && <DrainSheet lang={lang} center={center} onClose={() => setPanel({ kind: "none" })} />}
       {panel.kind === "bus" && <BusSheet mode={mode} at={at} lang={lang} onClose={() => setPanel({ kind: "none" })} />}
       {panel.kind === "hotspot" && (

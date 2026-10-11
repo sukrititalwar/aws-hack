@@ -1,5 +1,5 @@
 import type { StyleSpecification } from "maplibre-gl";
-import type { BusImpact, DrainMetrics, DrainRow, Hotspot, LonLat, Mode, Report, RouteResult, Spot, Vehicle, Weather } from "./types";
+import type { BusImpact, DrainMetrics, DrainRow, Hotspot, LonLat, Mode, PlaceKind, Report, RouteResult, SavedPlace, Spot, Vehicle, Weather } from "./types";
 
 export const API = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 export const CITIES: Record<string, { label: string; hi: string; center: LonLat }> = {
@@ -16,23 +16,42 @@ export function setCity(c: string) {
 export const WHATSAPP_NUMBER = (import.meta.env.VITE_WHATSAPP_NUMBER as string | undefined) ?? "";
 export const WHATSAPP_JOIN = (import.meta.env.VITE_WHATSAPP_JOIN as string | undefined) ?? "";
 
-async function call<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
+/** Set by auth.ts: returns a fresh ID token (refreshing it if needed) or null when signed out. */
+let tokenProvider: (() => Promise<string | null>) | null = null;
+export function setTokenProvider(fn: (() => Promise<string | null>) | null) {
+  tokenProvider = fn;
+}
+
+async function call<T>(path: string, init?: RequestInit & { timeoutMs?: number; auth?: boolean }): Promise<T> {
   if (!API) throw new Error("VITE_API_URL is not set. Copy frontend/.env.example to .env.local.");
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), init?.timeoutMs ?? 20000);
   try {
+    const extra: Record<string, string> = {};
+    if (init?.auth) {
+      const tok = tokenProvider ? await tokenProvider() : null;
+      if (!tok) throw new Error("Please sign in first.");
+      extra.Authorization = `Bearer ${tok}`;
+    }
     const r = await fetch(API + path, {
       ...init,
       signal: ctrl.signal,
-      headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}), ...(init?.headers as Record<string, string> | undefined) },
+      headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}), ...extra, ...(init?.headers as Record<string, string> | undefined) },
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
+    if (!r.ok) throw new Error(data.error || data.message || `Request failed (${r.status})`);
     return data as T;
+  } catch (e) {
+    // Say what actually went wrong instead of a bare "Failed to fetch" / "aborted".
+    if (e instanceof DOMException && e.name === "AbortError") throw new Error("The server took too long to answer. Please try again.");
+    if (e instanceof TypeError) throw new Error("Can't reach the server. Check your connection and try again.");
+    throw e;
   } finally {
     clearTimeout(timer);
   }
 }
+
+const sleepMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export const api = {
   uploadUrl: (b: { lat: number; lon: number; place?: string; deviceId: string; exifTime?: number }) =>
@@ -41,13 +60,26 @@ export const api = {
       body: JSON.stringify({ ...b, city: CITY }),
     }),
 
-  /** Presigned POST straight to S3. */
+  /** Presigned POST straight to S3, retried on network errors and 5xx (3 attempts). */
   async uploadPhoto(url: string, fields: Record<string, string>, blob: Blob) {
-    const fd = new FormData();
-    Object.entries(fields).forEach(([k, v]) => fd.append(k, v));
-    fd.append("file", blob, "photo.jpg"); // file must be the last field
-    const r = await fetch(url, { method: "POST", body: fd });
-    if (!r.ok) throw new Error(`Upload failed (${r.status})`);
+    let last = "";
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt) await sleepMs(attempt * 1500);
+      try {
+        const fd = new FormData();
+        Object.entries(fields).forEach(([k, v]) => fd.append(k, v));
+        fd.append("file", blob, "photo.jpg"); // file must be the last field
+        const r = await fetch(url, { method: "POST", body: fd });
+        if (r.ok) return;
+        const xml = await r.text().catch(() => "");
+        const code = /<Code>([^<]+)<\/Code>/.exec(xml)?.[1];
+        last = `Upload failed (${r.status}${code ? " " + code : ""})`;
+        if (r.status < 500) break; // 4xx: retrying will not help (expired link, too large, wrong type)
+      } catch {
+        last = "Upload failed: no connection";
+      }
+    }
+    throw new Error(last + ". Please try again.");
   },
 
   report: (id: string) => call<Report>(`/reports/${id}`),
@@ -59,6 +91,16 @@ export const api = {
   drains: (all = false) => call<{ drains: DrainRow[] }>(`/drains?city=${CITY}${all ? "&status=all" : ""}`),
   drain: (id: string) => call<DrainRow>(`/drains/${id}`),
   drainMetrics: () => call<DrainMetrics>(`/drains/metrics?city=${CITY}`),
+  // ---- signed-in user: saved addresses ----
+  places: () => call<{ places: SavedPlace[] }>("/me/places", { auth: true }),
+  addPlace: (b: { label: string; kind: PlaceKind; lat: number; lon: number; address?: string; city?: string }) =>
+    call<{ place: SavedPlace; replaced: string[] }>("/me/places", { method: "POST", body: JSON.stringify(b), auth: true }),
+  deletePlace: (id: string) => call<{ ok: boolean }>(`/me/places/${id}`, { method: "DELETE", auth: true }),
+
+  retryDrain: (id: string, deviceId: string) =>
+    call<{ ok: boolean }>(`/drains/${id}/retry`, { method: "POST", body: JSON.stringify({ deviceId }) }),
+  confirmDrain: (id: string, decision: "clear" | "reject", token: string, note?: string) =>
+    call<{ ok: boolean }>(`/drains/${id}/confirm`, { method: "POST", body: JSON.stringify({ decision, note }), headers: { "x-admin-token": token } }),
   assignDrain: (id: string, worker: string, token: string) =>
     call<{ ok: boolean }>(`/drains/${id}/assign`, { method: "POST", body: JSON.stringify({ worker }), headers: { "x-admin-token": token } }),
   afterUrl: (id: string, token: string) =>

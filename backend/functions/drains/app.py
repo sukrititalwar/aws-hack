@@ -4,9 +4,12 @@
   GET  /drains?city=               blockages ranked by priority (severity x reports x rain x hotspot)
   GET  /drains/metrics?city=       blockages cleared before rain, median time to clear, repeat blockages
   GET  /drains/{groupId}           one blockage with photos
-  POST /drains/{groupId}/assign    [dispatcher] {worker}
-  POST /drains/{groupId}/after-url [dispatcher] -> presigned S3 POST for the after-photo; the
-                                   blockage is cleared only if the photo shows a clear drain
+  POST /drains/{id}/retry          re-run analysis if it failed or never started (photo must be in S3)
+  POST /drains/{id}/assign         [dispatcher] {worker}
+  POST /drains/{id}/after-url      [dispatcher] -> presigned S3 POST for the after-photo; the blockage
+                                   is cleared only when AI verification of that photo succeeds
+  POST /drains/{id}/confirm        [dispatcher] {decision: clear|reject, note?} manual confirmation
+                                   of an after-photo when automatic verification was unavailable
 Dispatcher routes need the x-admin-token header (demo-grade shared secret).
 """
 import hashlib
@@ -17,6 +20,7 @@ import uuid
 from common import config, db, drain_store, drains, geo, http, ratelimit, views
 
 PER_DEVICE_PER_HOUR = 10
+STALE_ANALYSIS_S = 150      # still "analysing" after this long = the analyser never finished
 
 
 def _admin(event) -> bool:
@@ -73,23 +77,63 @@ def metrics(q):
     return http.resp(200, drains.metrics(drain_store.for_city(city), time.time()))
 
 
+def _row(head):
+    """Computed blockage row for the group containing `head` (empty if it is not a real blockage yet)."""
+    for row in drains.build_groups(drain_store.for_city(head["city"]), _hotspots(head["city"])):
+        if head["reportId"] in row["reportIds"]:
+            return row
+    return {}
+
+
 def one(event):
-    gid = http.path_param(event, "id")
-    head = drain_store.get(gid)
+    rid = http.path_param(event, "id")
+    head = drain_store.get(rid)
+    if not head:
+        # the id may be a merged group's id: look it up in the computed groups
+        for city in config.CITIES:
+            for row in drains.build_groups(drain_store.for_city(city), _hotspots(city)):
+                if rid == row["groupId"]:
+                    head = drain_store.get(row["reportIds"][0])
     if not head:
         return http.bad("not found", 404)
-    ms = drain_store.members(head["city"], head.get("groupId") or gid)
-    rows = drains.build_groups(ms, _hotspots(head["city"]))
-    row = rows[0] if rows else {}                      # empty while still analysing / if rejected
-    out = {"status": head["status"], "rejection_reason": head.get("rejection_reason"), **row,
+    status, error = head["status"], head.get("rejection_reason")
+    if status == "analysing" and time.time() - head["ts"] > STALE_ANALYSIS_S:
+        status, error = "error", "The analysis did not finish. Tap retry; if the photo never uploaded, send it again."
+    row = _row(head)
+    out = {"status": status, "rejection_reason": error, "stage": status, "analysisMode": head.get("analysisMode"),
+           "analysisError": head.get("analysisError"), **row,
            "reasoning": head.get("reasoning"), "reasoning_hi": head.get("reasoning_hi"),
            "confidence": head.get("confidence"), "standing_water": head.get("standing_water"),
-           "afterSeverity": head.get("afterSeverity"), "afterNote": head.get("afterNote"),
-           "clearanceVerified": head.get("clearanceVerified", False),
-           "photoUrl": views.photo_url(head["s3Key"])}
+           "afterSeverity": head.get("afterSeverity"), "afterNote": row.get("afterNote") or head.get("afterNote"),
+           "clearanceVerified": any(m.get("clearanceVerified") for m in [head]),
+           "photoUrl": views.photo_url(head["s3Key"]) if head.get("s3Key") else None}
+    if status == "error" and error:
+        out["status"] = "error"
     if head.get("afterKey"):
         out["afterUrl"] = views.photo_url(head["afterKey"])
     return http.resp(200, out)
+
+
+def retry(event):
+    """Re-trigger analysis for a report that failed or never finished."""
+    rid = http.path_param(event, "id")
+    head = drain_store.get(rid)
+    if not head or not head.get("s3Key"):
+        return http.bad("not found", 404)
+    stale = head["status"] == "analysing" and time.time() - head["ts"] > 60
+    if head["status"] != "error" and not stale:
+        return http.bad("This report is not stuck, so there is nothing to retry.", 409)
+    key = head["s3Key"]
+    s3 = views.s3()
+    try:
+        s3.head_object(Bucket=config.PHOTOS_BUCKET, Key=key)
+    except Exception:
+        return http.bad("The photo never arrived. Please send it again.", 409)
+    drain_store.update(rid, {"status": "analysing", "retriedAt": int(time.time())}, remove=["rejection_reason", "analysisError"])
+    # A copy onto itself raises ObjectCreated:Copy, which triggers the analyser again.
+    s3.copy_object(Bucket=config.PHOTOS_BUCKET, Key=key, CopySource={"Bucket": config.PHOTOS_BUCKET, "Key": key},
+                   ContentType="image/jpeg", MetadataDirective="REPLACE")
+    return http.resp(200, {"ok": True, "status": "analysing"})
 
 
 def assign(event):
@@ -100,9 +144,34 @@ def assign(event):
         return http.bad("not found or already cleared", 404)
     if not worker:
         return http.bad("worker name required")
-    drain_store.update_group(head["city"], head.get("groupId") or gid,
-                             {"status": "assigned", "assignedTo": worker, "assignedAt": int(time.time())})
+    drain_store.update_group(head["city"], gid, {"status": "assigned", "assignedTo": worker, "assignedAt": int(time.time())})
     return http.resp(200, {"ok": True, "assignedTo": worker})
+
+
+def confirm(event):
+    """Dispatcher decision on an after-photo when automatic verification could not run."""
+    gid = http.path_param(event, "id")
+    b = http.body(event)
+    decision, note = b.get("decision"), str(b.get("note") or "")[:200]
+    head = drain_store.get(gid)
+    if not head or head.get("status") not in drains.OPEN:
+        return http.bad("not found or already cleared", 404)
+    row = _row(head)
+    members = [drain_store.get(i) for i in (row.get("reportIds") or [gid])]
+    if not any(m and m.get("afterKey") for m in members):
+        return http.bad("There is no after-photo to confirm yet.", 409)
+    if decision == "clear":
+        drain_store.update_group(head["city"], gid, {
+            "status": "cleared", "clearedAt": int(time.time()), "clearanceVerified": False, "clearedBy": "dispatcher",
+            "awaitingReview": False, "afterRejected": False,
+            "afterNote": ("Confirmed clear by a dispatcher from the after-photo (manual, not AI-verified)." + (f" {note}" if note else ""))})
+    elif decision == "reject":
+        drain_store.update_group(head["city"], gid, {
+            "awaitingReview": False, "afterRejected": True,
+            "afterNote": "A dispatcher rejected the after-photo. Send another photo." + (f" {note}" if note else "")})
+    else:
+        return http.bad("decision must be clear or reject")
+    return http.resp(200, {"ok": True, "decision": decision})
 
 
 def after_url(event):
@@ -127,10 +196,17 @@ def handler(event, _ctx):
             return metrics(q)
         if route == "GET /drains/{id}":
             return one(event)
-        if route in ("POST /drains/{id}/assign", "POST /drains/{id}/after-url"):
+        if route == "POST /drains/{id}/retry":
+            dev = str(http.body(event).get("deviceId") or "")[:64]
+            if len(dev) < 8:
+                return http.bad("deviceId required")
+            if ratelimit.limited("drainretry", dev, PER_DEVICE_PER_HOUR):
+                return http.bad("Too many retries. Try again later.", 429)
+            return retry(event)
+        if route in ("POST /drains/{id}/assign", "POST /drains/{id}/after-url", "POST /drains/{id}/confirm"):
             if not _admin(event):
                 return http.bad("Dispatcher access only.", 403)
-            return assign(event) if route.endswith("assign") else after_url(event)
+            return {"assign": assign, "after-url": after_url, "confirm": confirm}[route.rsplit("/", 1)[-1]](event)
     except ValueError as e:
         return http.bad(str(e))
     return http.bad("not found", 404)
