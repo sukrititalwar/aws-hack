@@ -1,7 +1,7 @@
 import { Ban, Camera, CircleCheck, CloudRain, Navigation, Shield, Sun, TriangleAlert, Waves, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { ago, depthBand, t, type Lang } from "../i18n";
+import { ago, depthBand, EV_SCOOTER_WARNING_CM, t, type Lang } from "../i18n";
 import type { LonLat, Mode, Report, Spot, Vehicle } from "../types";
 import { deviceId } from "../util";
 import ResultCard from "./ResultCard";
@@ -95,6 +95,9 @@ export default function SpotSheet({ spot, mode, known, vehicle, lang, setLang, o
             : `${Math.round(spot.rainPast3h ?? 0)} mm of rain in the last 3 h. This spot usually floods; nobody has reported it yet.`}
         </div>
         <p className="small">{lang === "hi" ? "अनुमानित" : "Estimated"}: <strong>{depthBand(spot.depth_low, spot.depth_high)} cm</strong> ({lang === "hi" ? "कम भरोसा" : "low confidence, so verdicts are stricter"})</p>
+        {vehicle === "ev_scooter" && spot.depth_high >= EV_SCOOTER_WARNING_CM && (
+          <div className="ev-banner" role="alert"><TriangleAlert size={18} aria-hidden /> {t("evDepthWarning", lang)}</div>
+        )}
         <BigVerdict verdict={spot.verdicts[vehicle]} vehicle={vehicle} lang={lang} inspect />
         <VerdictGrid verdicts={spot.verdicts} selected={vehicle} lang={lang} inspect />
         {spot.source_url && <p className="small">{lang === "hi" ? "पुराना स्रोत" : "Why this is a known spot"}: <a href={spot.source_url} target="_blank" rel="noreferrer">{new URL(spot.source_url).hostname.replace("www.", "")}</a></p>}
@@ -120,6 +123,9 @@ export default function SpotSheet({ spot, mode, known, vehicle, lang, setLang, o
           footer={votes} />
       ) : (
         <>
+          {vehicle === "ev_scooter" && spot.depth_high >= EV_SCOOTER_WARNING_CM && (
+            <div className="ev-banner" role="alert"><TriangleAlert size={18} aria-hidden /> {t("evDepthWarning", lang)}</div>
+          )}
           <BigVerdict verdict={spot.verdicts[vehicle]} vehicle={vehicle} lang={lang} inspect={!!spot.needs_inspection} />
           <VerdictGrid verdicts={spot.verdicts} selected={vehicle} lang={lang} inspect={!!spot.needs_inspection} />
           {mode === "live" && votes}

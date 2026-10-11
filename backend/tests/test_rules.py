@@ -29,11 +29,32 @@ def test_threshold_boundaries(vehicle):
 def test_table_from_spec():
     # Spot checks straight from the README table.
     assert v(a(25), "scooter") == "NO_GO"
+    assert v(a(16), "ev_scooter") == "NO_GO"
+    assert v(a(16), "scooter") == "RISKY"
     assert v(a(25), "car") == "RISKY"
     assert v(a(25), "suv") == "RISKY"
     assert v(a(24), "suv") == "GO"
     assert v(a(45), "bus") == "RISKY"
     assert v(a(30), "pedestrian") == "NO_GO"
+
+
+def test_ev_scooter_threshold_boundaries_and_cautious_copy():
+    assert v(a(11.9), "ev_scooter") == "GO"
+    assert v(a(12), "ev_scooter") == "RISKY"
+    assert v(a(12.1), "ev_scooter") == "RISKY"
+    assert v(a(15.9), "ev_scooter") == "RISKY"
+    assert v(a(16), "ev_scooter") == "NO_GO"
+    assert v(a(16.1), "ev_scooter") == "NO_GO"
+
+    below = rules.verdicts_for(a(11.9))["verdicts"]["ev_scooter"]
+    warning = rules.verdicts_for(a(12))["verdicts"]["ev_scooter"]
+    assert below["label_en"] == "EV Scooter: Below app caution threshold"
+    assert below["label_hi"] == "ई-स्कूटर: ऐप की सावधानी सीमा से कम"
+    assert below["category"] == "potentially_unsafe"
+    assert "not a safety guarantee" in below["why"]
+    assert "सुरक्षा की गारंटी नहीं" in below["why_hi"]
+    assert "threshold is a precaution" in warning["why"]
+    assert "ऐप की सीमा एहतियात है" in warning["why_hi"]
 
 
 @pytest.mark.parametrize("kw", [

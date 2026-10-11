@@ -31,10 +31,22 @@ export const AutoRickshaw = (p: LucideProps) => (
   </Svg>
 );
 
+export const EvScooter = (p: LucideProps) => (
+  <Svg {...p}>
+    <circle cx="5.5" cy="17.5" r="2.5" />
+    <circle cx="18.5" cy="17.5" r="2.5" />
+    <path d="M8 17.5h6.5L17 5" />
+    <path d="M15 5h4" />
+    <path d="M4 12.5h6l2 5" />
+    <path d="M12 10l-2 3h3l-1.5 3" strokeWidth={1.5} />
+  </Svg>
+);
+
 const VEHICLE_ICON: Record<Vehicle, React.ComponentType<LucideProps>> = {
   pedestrian: Footprints,
   bicycle: Bike,
   scooter: Scooter,
+  ev_scooter: EvScooter,
   auto: AutoRickshaw,
   car: Car,
   suv: CarFront,

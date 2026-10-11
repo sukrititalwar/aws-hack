@@ -20,7 +20,7 @@ SOCIAL_MODEL_ID = os.environ.get("SOCIAL_MODEL_ID", BEDROCK_MODEL_ID)  # a cheap
 APP_URL = os.environ.get("APP_URL", "")
 
 # ---- Vehicles ----
-VEHICLES = ["pedestrian", "bicycle", "scooter", "auto", "car", "suv", "bus", "ambulance"]
+VEHICLES = ["pedestrian", "bicycle", "scooter", "ev_scooter", "auto", "car", "suv", "bus", "ambulance"]
 
 # Verdict thresholds in cm, applied to depth_cm_high (worst case).
 #   depth <  go           -> GO
@@ -28,11 +28,13 @@ VEHICLES = ["pedestrian", "bicycle", "scooter", "auto", "car", "suv", "bus", "am
 #   depth >= no_go        -> NO_GO
 # Starting assumptions from the flood-safety rule of thumb (~15 cm moving water knocks a
 # person down, ~30 cm floats many cars, ~60 cm sweeps most vehicles) plus low two-wheeler
-# exhausts / air intakes. Tune with tests/eval_depth.py.
+# exhausts / air intakes. EV scooter limits below are app thresholds, not manufacturer ratings.
+# Tune with tests/eval_depth.py.
 THRESHOLDS = {
     "pedestrian": {"go": 10, "no_go": 30},
     "bicycle":    {"go": 10, "no_go": 20},
     "scooter":    {"go": 10, "no_go": 20},
+    "ev_scooter": {"go": 12, "no_go": 16},
     "auto":       {"go": 15, "no_go": 25},
     "car":        {"go": 15, "no_go": 30},
     "suv":        {"go": 25, "no_go": 45},
@@ -62,7 +64,7 @@ STALE_PHOTO_H = 6                 # EXIF time older than this (live mode) -> sta
 EDGE_BLOCK_RADIUS_M = 40
 RISKY_PENALTY = 5.0
 SPEED_KMH = {
-    "pedestrian": 4.5, "bicycle": 12, "scooter": 20, "auto": 18,
+    "pedestrian": 4.5, "bicycle": 12, "scooter": 20, "ev_scooter": 20, "auto": 18,
     "car": 20, "suv": 20, "bus": 15, "ambulance": 25,
 }
 
