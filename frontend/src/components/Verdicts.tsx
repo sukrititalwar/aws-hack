@@ -1,4 +1,4 @@
-import { categoryUI, VEHICLES, type Lang } from "../i18n";
+import { categoryUI, t, VEHICLES, type Lang } from "../i18n";
 import { VehicleIcon, VerdictIcon } from "../icons";
 import type { Vehicle, Verdict } from "../types";
 
@@ -8,8 +8,10 @@ export function VerdictGrid({ verdicts, selected, lang, inspect = false }: { ver
   return (
     <ul className="vgrid" aria-label="Verdict for each vehicle">
       {VEHICLES.map((v) => {
-        const ui = categoryUI(verdicts[v.id], inspect);
-        const short = ui.glyph === "?" ? (lang === "hi" ? "जाँचें" : "Check") : ui.glyph === "✓" ? (lang === "hi" ? "ठीक" : "OK") : ui.glyph === "!" ? (lang === "hi" ? "जोखिम" : "Risky") : (lang === "hi" ? "नहीं" : "No");
+        const ui = categoryUI(verdicts[v.id], inspect, v.id);
+        const short = v.id === "ev_scooter" && verdicts[v.id] === "GO" && !inspect
+          ? t("evCaution", lang)
+          : ui.glyph === "?" ? (lang === "hi" ? "जाँचें" : "Check") : ui.glyph === "✓" ? (lang === "hi" ? "ठीक" : "OK") : ui.glyph === "!" ? (lang === "hi" ? "जोखिम" : "Risky") : (lang === "hi" ? "नहीं" : "No");
         return (
           <li key={v.id} className={`vcell ${ui.cls}${v.id === selected ? " sel" : ""}`}>
             <VehicleIcon v={v.id} size={20} className="vicon" />
@@ -26,7 +28,7 @@ export function VerdictGrid({ verdicts, selected, lang, inspect = false }: { ver
 
 /** Big category for the selected vehicle. */
 export function BigVerdict({ verdict, vehicle, why, lang, inspect = false }: { verdict: Verdict; vehicle: Vehicle; why?: string; lang: Lang; inspect?: boolean }) {
-  const ui = categoryUI(verdict, inspect);
+  const ui = categoryUI(verdict, inspect, vehicle);
   const v = VEHICLES.find((x) => x.id === vehicle)!;
   return (
     <div className={`big ${ui.cls}`} role="status">

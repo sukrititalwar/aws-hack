@@ -348,6 +348,7 @@ button.banner { cursor: pointer; }
 .reasoning { margin: 0; font-style: italic; color: var(--muted); }
 .hazards { background: var(--risky-bg); color: var(--risky); padding: 10px 12px; border-radius: 10px; font-size: 0.9rem; }
 .danger-banner { display: flex; align-items: center; gap: 8px; background: #facc15; color: #1a1300; font-weight: 700; padding: 12px 14px; border-radius: 10px; }
+.ev-banner { display: flex; align-items: center; gap: 8px; background: var(--risky-bg); color: var(--risky); border: 1px solid var(--border); font-weight: 600; padding: 10px 14px; border-radius: 10px; font-size: 0.88rem; }
 .vgrid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .vcell { border-radius: 10px; padding: 8px 4px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px; border: 1px solid transparent; }
 .vcell.go { background: var(--go-bg); } .vcell.risky { background: var(--risky-bg); } .vcell.nogo { background: var(--nogo-bg); }

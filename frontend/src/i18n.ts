@@ -1,11 +1,13 @@
 import type { Vehicle, Verdict } from "./types";
 
 export type Lang = "en" | "hi";
+export const EV_SCOOTER_WARNING_CM = 12;
 
 export const VEHICLES: { id: Vehicle; en: string; hi: string }[] = [
   { id: "pedestrian", en: "Walking", hi: "पैदल" },
   { id: "bicycle", en: "Bicycle", hi: "साइकिल" },
   { id: "scooter", en: "Scooter", hi: "स्कूटर" },
+  { id: "ev_scooter", en: "EV Scooter", hi: "ई-स्कूटर" },
   { id: "auto", en: "Auto", hi: "ऑटो" },
   { id: "car", en: "Car", hi: "कार" },
   { id: "suv", en: "SUV", hi: "एसयूवी" },
@@ -88,11 +90,23 @@ const STR = {
   roughDepth: { en: "Rough depth", hi: "मोटा अंदाज़ा" },
   drains: { en: "Blocked drains", hi: "बंद नाले" },
   photoOrVideo: { en: "Take a photo or short video", hi: "फ़ोटो या छोटा वीडियो लें" },
+  evDepthWarning: {
+    en: "The upper end of this rough depth estimate is at or above this app's EV Scooter caution threshold. This is a precaution, not a prediction of damage or a safety guarantee. Avoid crossing if unsure.",
+    hi: "गहराई के इस मोटे अनुमान की ऊपरी सीमा इस ऐप की ई-स्कूटर सावधानी सीमा तक या उससे ऊपर है। यह एहतियात है, नुकसान का अनुमान या सुरक्षा की गारंटी नहीं। शक हो तो पार न करें।",
+  },
+  evBelowThreshold: {
+    en: "Below app caution threshold; safety is not established",
+    hi: "ऐप की सावधानी सीमा से कम; सुरक्षा निश्चित नहीं",
+  },
+  evCaution: { en: "Caution", hi: "सावधानी" },
 } as const;
 
 /** Verdict + "are we sure?" -> the user-facing category. A GO we are unsure about is never "passable". */
-export function categoryUI(verdict: Verdict, inspect: boolean): { cls: string; glyph: string; en: string; hi: string } {
+export function categoryUI(verdict: Verdict, inspect: boolean, vehicle?: Vehicle): { cls: string; glyph: string; en: string; hi: string } {
   if (verdict === "GO" && inspect) return { cls: "risky", glyph: "?", en: "Requires inspection", hi: "जाँच ज़रूरी" };
+  if (verdict === "GO" && vehicle === "ev_scooter") {
+    return { cls: "risky", glyph: "!", en: STR.evBelowThreshold.en, hi: STR.evBelowThreshold.hi };
+  }
   if (verdict === "GO") return { cls: "go", glyph: "✓", en: "Passable", hi: "पार कर सकते हैं" };
   if (verdict === "RISKY") return { cls: "risky", glyph: "!", en: "Potentially unsafe", hi: "जोखिम भरा" };
   return { cls: "nogo", glyph: "✕", en: "Unsafe", hi: "असुरक्षित" };
