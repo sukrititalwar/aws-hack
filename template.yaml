@@ -35,6 +35,11 @@ Parameters:
     Default: ""
     MinLength: 0
     Description: Shared secret for the DrainReady dispatcher screen (choose a long random string)
+  PredictiveRouteEnabled:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+    Description: Enable the experimental predictive-route endpoint after review
   RedditClientId: { Type: String, Default: "" }
   RedditClientSecret: { Type: String, Default: "", NoEcho: true }
   XBearerToken: { Type: String, Default: "", NoEcho: true, Description: "Optional, X API is paid" }
@@ -373,6 +378,9 @@ Resources:
       Handler: functions.route.app.handler
       MemorySize: 1769   # 1 full vCPU: graph parse + A* are CPU bound
       Timeout: 29
+      Environment:
+        Variables:
+          PREDICTIVE_ROUTE_ENABLED: !Ref PredictiveRouteEnabled
       Policies:
         - DynamoDBReadPolicy: { TableName: !Ref ReportsTable }
         - DynamoDBReadPolicy: { TableName: !Ref HotspotsTable }
@@ -386,6 +394,9 @@ Resources:
         Route:
           Type: HttpApi
           Properties: { ApiId: !Ref Api, Path: /route, Method: POST }
+        PredictiveRoute:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /predictive-route, Method: POST }
         BusImpact:
           Type: HttpApi
           Properties: { ApiId: !Ref Api, Path: /bus-impact, Method: GET }

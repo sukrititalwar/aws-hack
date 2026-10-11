@@ -1,7 +1,9 @@
 import type { StyleSpecification } from "maplibre-gl";
-import type { BusImpact, DrainMetrics, DrainRow, Hotspot, LivePosts, LonLat, Mode, PlaceKind, RainIndia, Report, RouteResult, SavedPlace, SimPayload, Spot, Vehicle, Weather } from "./types";
+import type { BusImpact, DrainMetrics, DrainRow, Hotspot, LivePosts, LonLat, Mode, PlaceKind, PredictiveRouteResult, RainIndia, Report, RouteResult, SavedPlace, SimPayload, Spot, Vehicle, Weather } from "./types";
 
 export const API = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+export const PREDICTIVE_ROUTE_ENABLED =
+  (import.meta.env.VITE_PREDICTIVE_ROUTE_ENABLED as string | undefined) === "true";
 export const CITIES: Record<string, { label: string; hi: string; center: LonLat }> = {
   delhi: { label: "Delhi", hi: "दिल्ली", center: [77.232, 28.61] },
   gurugram: { label: "Gurugram", hi: "गुरुग्राम", center: [77.05, 28.46] },
@@ -133,6 +135,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ from, to, vehicle, city: CITY, mode, compare: true, at: mode !== "live" ? Math.round(at ?? 0) : undefined }),
       timeoutMs: 15000,
+    }),
+
+  predictiveRoute: (from: LonLat, to: LonLat, vehicle: Vehicle) =>
+    call<PredictiveRouteResult>("/predictive-route", {
+      method: "POST",
+      body: JSON.stringify({ from, to, vehicle, city: CITY, mode: "live" }),
+      timeoutMs: 25000,
     }),
 
   subscribe: (b: { contact: string; vehicle: Vehicle; name: string; route: { type: "LineString"; coordinates: LonLat[] } }) =>

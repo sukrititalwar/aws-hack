@@ -126,22 +126,27 @@ def hotspots(city: str) -> list[dict]:
     return [from_ddb(i) for i in items]
 
 
-def active_spots(city: str, mode: str, bbox, now: float | None = None, predicted: bool = True) -> list[dict]:
+def active_spots(city: str, mode: str, bbox, now: float | None = None, predicted: bool = True,
+                 report_items: list[dict] | None = None, hotspot_items: list[dict] | None = None) -> list[dict]:
     """Merged active spots at time `now` (demo replay passes the replay time). In live mode,
-    chronic hotspots under heavy rain are added as low-confidence *predicted* spots."""
+    chronic hotspots under heavy rain are added as low-confidence *predicted* spots. Optional
+    preloaded items let callers reuse one read for multiple data views."""
     now = now or time.time()
-    real = _real_spots(city, mode, bbox, now)
+    real = _real_spots(city, mode, bbox, now, report_items)
     if mode != "live" or not predicted:
         return real
     min_lon, min_lat, max_lon, max_lat = bbox
-    hs = [h for h in hotspots(city) if not h["hotspotId"].startswith("#")
+    hs = [h for h in (hotspot_items if hotspot_items is not None else hotspots(city))
+          if not h["hotspotId"].startswith("#")
           and min_lon <= h["lon"] <= max_lon and min_lat <= h["lat"] <= max_lat]
     return real + spots.predicted_spots(hs, real, now)
 
 
-def _real_spots(city: str, mode: str, bbox, now: float) -> list[dict]:
+def _real_spots(city: str, mode: str, bbox, now: float, report_items: list[dict] | None = None) -> list[dict]:
     # "still flooded" votes keep a report alive past its own ts, so look back 2x the expiry
     # window; build_spots drops anything without activity in the last EXPIRE_AFTER_H.
-    items = query_bbox(city, mode, bbox, now - 2 * config.EXPIRE_AFTER_H * 3600, now)
+    items = report_items if report_items is not None else query_bbox(
+        city, mode, bbox, now - 2 * config.EXPIRE_AFTER_H * 3600, now,
+    )
     live = [as_spot_input(i) for i in items if i.get("status") == "live"]
     return spots.build_spots(live, now)

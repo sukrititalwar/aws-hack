@@ -22,6 +22,7 @@ ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "*")
 WA_SESSIONS_TABLE = os.environ.get("WA_SESSIONS_TABLE", "WhatsAppSessions")
 SOCIAL_MODEL_ID = os.environ.get("SOCIAL_MODEL_ID", BEDROCK_MODEL_ID)  # a cheaper text model is fine
 APP_URL = os.environ.get("APP_URL", "")
+PREDICTIVE_ROUTE_ENABLED = os.environ.get("PREDICTIVE_ROUTE_ENABLED", "false").lower() == "true"
 
 # ---- Vehicles ----
 VEHICLES = ["pedestrian", "bicycle", "scooter", "ev_scooter", "auto", "car", "suv", "bus", "ambulance"]
@@ -98,3 +99,15 @@ RAIN_NOW_MM_H = 7.5          # IMD "heavy" hourly intensity is ~7.5 mm/h and abo
 RAIN_PAST3H_FLOOD_MM = 20    # this much in the last 3 h: hotspots are likely flooded now
 RAIN_NEXT3H_WARN_MM = 15     # this much forecast in the next 3 h: warn
 PREDICTED_SUPPRESS_M = 150   # a real report within this distance replaces the prediction
+
+# Predictive mobility prototype. This weighted index is not a calibrated probability.
+PREDICTIVE_RISK_WEIGHTS = {"weather": 0.5, "reports": 0.3, "hotspots": 0.2}
+PREDICTIVE_SCORE_BANDS = {"watch": 25, "elevated": 55}
+PREDICTIVE_WEATHER_SIGNAL_WEIGHTS = {"rain": 0.6, "probability": 0.4, "weather_code": 0.4}
+PREDICTIVE_RAIN_SCORE_PER_MM = 20
+PREDICTIVE_RAIN_REASON_MM = 0.1
+PREDICTIVE_RAIN_REASON_PROBABILITY = 30
+PREDICTIVE_LOOKAHEAD_MIN = 60
+PREDICTIVE_SAMPLE_SPACING_M = 2000
+PREDICTIVE_EVENT_RADIUS_M = 120
+PREDICTIVE_WEATHER_TIMEOUT_S = 6

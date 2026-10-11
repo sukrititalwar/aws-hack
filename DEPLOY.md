@@ -1,153 +1,188 @@
-# Deploy guide + what's left before submission
+# Deployment handoff
 
-Everything runs in **ap-south-1 (Mumbai)**. Commands run from the repo root. First-time deploy takes about 45–60 min.
+This project already has a deployed AWS SAM stack and a ZIP-deployed Amplify
+frontend. These instructions are for preparing and reviewing an update to that
+existing deployment only. Do **not** create another stack or Amplify app, run
+`sam delete`, or deploy the template as a fresh stack.
 
-**Status (9 Oct 2026):** code complete and tested locally (67 backend tests pass, `sam build` succeeds, the frontend builds). **Not yet deployed to AWS.**
+The reported deployment uses stack `scooter-cross` in `ap-south-1` and the
+existing Amplify `main` app. Verify those names, the AWS account, current stack
+status, template, parameters, API URL, CORS origin, and the team's established
+ZIP-upload procedure with the stack owner immediately before any deployment.
+Those deployment details are supplied handoff information, not independently
+verified here.
 
----
+Predictive Flood Mobility is experimental and disabled by default. Its
+`POST /predictive-route` API event is attached to the existing `RouteFunction`;
+it adds no Lambda function, table, or bucket. SAM will update the existing HTTP
+API and may create/update generated API integration or Lambda permission
+resources for the new event. Existing `/route`, DrainReady, and other API
+behaviors are intended to remain unchanged.
 
-## 0. One-time setup on your laptop
-```bash
-brew install awscli aws-sam-cli          # macOS; see AWS docs for Windows/Linux
-python3 -m venv .venv && .venv/bin/pip install -r scripts/requirements.txt
-cd frontend && npm install && cd ..
+## 1. Code preparation (local; no AWS changes)
+
+From the repository root, validate and build the template and run the relevant
+application checks:
+
+```powershell
+sam validate --lint --template-file template.yaml
+sam build --template-file template.yaml --use-container
+python -B -m pytest -q -p no:cacheprovider .\backend\tests
+Set-Location .\frontend
+npm ci
+npm run typecheck
+npm run build
 ```
-Create an IAM user (`hackathon-deployer`, policy **AdministratorAccess**), create an **access key** for the CLI, then:
-```bash
-aws configure        # paste key + secret, region ap-south-1, output json
-aws sts get-caller-identity
+
+`npm ci` is for a clean dependency install from the checked-in lockfile; do not
+change dependency manifests just to perform this check. A successful local
+build does not verify AWS permissions, deployment, forecast-provider access, or
+live application behavior.
+
+Keep `PredictiveRouteEnabled=false` and
+`VITE_PREDICTIVE_ROUTE_ENABLED=false` until backend and frontend rollout are
+approved. The frontend build flag is compile-time configuration.
+
+## 2. Backend update (existing stack only; requires separate approval)
+
+Before preparing a CloudFormation change set:
+
+1. Use an authorized AWS identity and confirm the account and region are the
+   owner's intended `ap-south-1` account. Never put access keys, `AdminToken`,
+   or other secret values in source control or shell history.
+2. Inspect the live `scooter-cross` stack status, deployed template, parameter
+   values, and outputs. Confirm it is the existing stack and is stable. Check
+   its current API routes and `RouteFunction` configuration.
+3. Compare the built template with the deployed template. Preserve existing
+   stack parameters, resource names, API settings, CORS allow-origin, IAM
+   configuration, and unrelated resources. Do not substitute defaults for
+   existing values or copy the examples from an initial-deployment guide.
+4. Create a change set for the existing stack only. Review every resource
+   action and property difference before execution. Expected application
+   changes are an additional `POST /predictive-route` API route, any generated
+   integration/permission resources for it, and a `PREDICTIVE_ROUTE_ENABLED`
+   environment setting on `RouteFunction`; reject unexpected
+   replacements/deletions or changes to unrelated Lambda configuration,
+   DrainReady, tables, buckets, CORS, or existing routes.
+5. Keep the backend feature parameter false for the first update. If a change
+   set proposes resource replacement or any unexpected change, do not execute
+   it; ask the stack owner to investigate.
+
+When (and only when) the stack owner has approved an update and supplied an
+audited SAM deploy configuration containing the existing stack's parameter
+values, the change-set-only command has this form:
+
+```powershell
+sam deploy --template-file .aws-sam\build\template.yaml `
+  --stack-name scooter-cross --region ap-south-1 --capabilities CAPABILITY_IAM `
+  --config-file <owner-approved-config-file> --config-env <verified-environment> `
+  --no-execute-changeset
 ```
 
-## 1. Console clicks (do these by hand)
-1. **Bedrock** (region Mumbai): open *Anthropic Claude Sonnet 4* in the model catalog or playground and submit the one-time Anthropic use-case form. Then find the model ID:
-   ```bash
-   aws bedrock list-inference-profiles --region ap-south-1 --query "inferenceProfileSummaries[].inferenceProfileId" --output table
-   ```
-   Copy the `apac.anthropic.claude-sonnet-4-...` ID. If Claude isn't offered in Mumbai, use `us-east-1` with a `us.anthropic...` ID and `BedrockRegion=us-east-1`.
-2. **Amazon Location** → *API keys* → Create. Allow **Maps** and **Places (Geocode)**. Copy the key for the frontend.
+The placeholders must be replaced with the owner's verified configuration.
+If no configuration that preserves the deployed parameter values is available,
+stop and ask the owner to establish one; do not rely on template defaults or
+guess values. Keep secret values out of the repository and shell history. The
+command prepares a change set only: inspect it in CloudFormation and require
+the owner's explicit approval before anyone executes it.
 
-## 2. Backend (SAM)
-```bash
-sam build
-sam deploy --guided
+The template defaults `PredictiveRouteEnabled` to `false`. For a later,
+separately approved enablement, set it to `true` through an update to the
+existing stack only after reviewing that update's change set. Do not use
+`sam deploy --guided` as a shortcut for this existing stack, and do not execute
+a change set without the owner's approval.
+
+Before an approved update, retain the deployed template and parameter
+configuration and the currently hosted frontend ZIP as rollback references.
+CloudFormation normally rolls back a failed stack update, but that does not
+replace reviewing the change set or retaining recovery artifacts. If an update
+fails or has an unexpected effect, stop further updates and follow the
+owner-approved CloudFormation rollback/recovery procedure. Never delete the
+stack as a rollback.
+
+After backend approval and execution, verify in AWS that the stack update
+completed, the existing API exposes `POST /predictive-route`, the route is
+integrated with the existing `RouteFunction`, and the function has the intended
+feature-gate value. Test the endpoint with a controlled request and inspect
+logs. These checks require AWS access; local tests are not a substitute.
+
+## 3. Frontend update (existing ZIP-deployed Amplify app only)
+
+Use the existing Amplify app and its established ZIP upload procedure; do not
+create an Amplify app, connect a new Git branch, or assume a Git push deploys
+this frontend. Confirm the currently deployed API URL, Location key/region,
+city, CORS origin, and the app's artifact/upload process with its owner.
+
+Build from the reviewed feature revision with the existing frontend environment
+values preserved. Set `VITE_PREDICTIVE_ROUTE_ENABLED=true` only after the
+backend route is deployed and enabled; otherwise leave it `false`. Build output
+is in `frontend\dist` after `npm run build`. Upload that artifact using the
+owner's existing ZIP deployment workflow and retain the previously deployed
+ZIP so the frontend can be rolled back independently.
+
+For a coordinated enablement, deploy and verify the backend first, then publish
+the frontend with the flag on. If the API is unavailable or backend enablement
+is deferred, publish with the frontend flag off. After upload, verify the
+existing hosted application, check browser/API errors, and confirm ordinary
+route planning, reports, and DrainReady remain operational.
+
+## Existing service operations (unchanged)
+
+### WhatsApp
+
+The existing Twilio sandbox webhook and credentials are separate from
+predictive routing. Preserve their current configuration. Do not print or
+commit credentials. Test the webhook only through the team's authorized
+procedure.
+
+### DrainReady
+
+DrainReady remains part of the existing application and is not a target of this
+feature update. Do not change its handlers, tables, S3 triggers, dispatcher
+token, or environment settings. A deployment change set must be checked for
+unintended DrainReady changes before execution.
+
+### Troubleshooting
+
+Use the existing stack's CloudWatch logs and operational runbooks. A missing
+route graph, API/CORS errors, forecast-provider failure, or missing report data
+should be diagnosed without changing unrelated AWS resources. The predictive
+feature reports unavailable data explicitly and does not treat missing data as
+evidence of safe or dry roads.
+
+For example, inspect the existing analysis function logs with the stack owner's
+approved AWS identity:
+
+```powershell
+sam logs --stack-name scooter-cross --region ap-south-1 -n AnalyzeFunction --tail
 ```
-| Prompt | Answer |
+
+| Symptom | Check |
 |---|---|
-| Stack name | `scooter-cross` |
-| Region | `ap-south-1` |
-| BedrockModelId / SocialModelId | ID from step 1 (a Haiku profile is fine for Social) |
-| BedrockRegion | `ap-south-1` |
-| AllowedOrigin | `*` for now |
-| AlertEmail | team email (optional; confirm the SNS email) |
-| AdminToken | a long random string; this is the **DrainReady dispatcher access code** (keep it private) |
-| AppUrl, WhatsAppTopicArn, Reddit/X/YouTube keys | leave empty for now |
-| "...may not have authorization defined, is this okay?" | `y` (public API) |
-| Save to samconfig.toml | `Y` |
+| Report stuck on "analysing", Bedrock `AccessDeniedException` | Verify model access, model ID, and region with the account owner. |
+| CORS error in browser | Compare the live API CORS origin with the existing Amplify URL; do not broaden it as a workaround. |
+| "Routing is not available for this city" | Confirm the required road graph exists in the existing data bucket. |
+| WhatsApp silent / "bad Twilio signature" | Confirm the webhook URL and existing SSM credentials using the approved runbook. Never print credentials. |
+| No social pins | Check the existing `SocialIngestFunction` schedule and logs; no posts may be available. |
 
-```bash
-aws cloudformation describe-stacks --stack-name scooter-cross --query "Stacks[0].Outputs" --output table
-```
-Note **ApiUrl**, **PhotosBucketName**, **HotspotsTableName**, **ReportsTableName** and **WhatsAppTwilioWebhook**.
+## Existing demo and submission notes
 
-## 3. Data
-```bash
-export BUCKET=<PhotosBucketName> HOTSPOTS=<HotspotsTableName>
-for c in delhi gurugram kochi thiruvananthapuram; do .venv/bin/python scripts/build_graph.py --city $c --bucket $BUCKET; done
-for c in delhi gurugram kochi thiruvananthapuram; do .venv/bin/python scripts/seed_hotspots.py --city $c --table $HOTSPOTS; done
-# optional, Delhi buses (DTC GTFS from https://mobilitydatabase.org/feeds/gtfs/mdb-3139):
-.venv/bin/python scripts/import_gtfs.py --city delhi --gtfs ~/Downloads/delhi-bus.zip --bucket $BUCKET
-# first live rain check now instead of waiting 15 min:
-aws lambda invoke --function-name $(aws cloudformation describe-stack-resource --stack-name scooter-cross \
-  --logical-resource-id RiskSchedulerFunction --query StackResourceDetail.PhysicalResourceId --output text) /dev/stdout
-```
-Smoke test:
-```bash
-curl "<ApiUrl>/hotspots?city=kochi"      # hotspots + "weather" with live rain
-curl -X POST "<ApiUrl>/route" -d '{"from":[77.2205,28.632],"to":[77.2245,28.642],"vehicle":"scooter","city":"delhi","compare":true}'
-```
+These are separate from Predictive Flood Mobility and do not need changes for
+its handoff:
 
-## 4. Frontend on Amplify (from this GitHub repo)
-Amplify console → **Create new app** → GitHub → `sukrititalwar/aws-hack`, branch `main` → tick **"My app is a monorepo"**, root `frontend` (it reads `amplify.yml`). Then set these environment variables:
+- **Demo photos:** use only photos you're allowed to use; record source and
+  licence information before loading demo data.
+- **Demo social posts:** use public posts and retain their source information.
+- **Accuracy numbers:** run the existing depth evaluation set and report its
+  measured results; do not infer accuracy from mocked tests.
+- **Hotspots:** retain citations and verification status for every seeded
+  hotspot.
+- **Demo video:** distinguish prototype behavior and local tests from verified
+  live AWS behavior.
 
-| Variable | Value |
-|---|---|
-| `VITE_API_URL` | ApiUrl |
-| `VITE_CITY` | `delhi` |
-| `VITE_LOCATION_API_KEY` | key from step 1.2 |
-| `VITE_LOCATION_REGION` | `ap-south-1` |
-| `VITE_WHATSAPP_NUMBER` | `14155238886` (after step 6) |
-| `VITE_WHATSAPP_JOIN` | `join <sandbox-code>` (after step 6) |
+## Cost and teardown
 
-Deploy, then note the URL (`https://main.<id>.amplifyapp.com`). Every `git push` to `main` redeploys.
-
-## 5. Lock CORS + WhatsApp links
-`sam deploy --guided` again: set **AllowedOrigin** and **AppUrl** to the Amplify URL (no trailing `/`).
-
-## 6. WhatsApp (Twilio sandbox, ~10 min)
-1. twilio.com → sign up → *Messaging → Try it out → Send a WhatsApp message*. Each tester sends `join <code>` to **+1 415 523 8886**.
-2. *Sandbox settings* → "When a message comes in" = **WhatsAppTwilioWebhook** output, **POST**.
-3. Store credentials (Twilio console home):
-   ```bash
-   aws ssm put-parameter --name /scooter-cross/whatsapp/twilio_account_sid --type SecureString --value ACxxxxxxxx
-   aws ssm put-parameter --name /scooter-cross/whatsapp/twilio_auth_token  --type SecureString --value <auth_token>
-   aws ssm put-parameter --name /scooter-cross/whatsapp/twilio_from        --type String       --value whatsapp:+14155238886
-   ```
-4. WhatsApp "hi" to the number → instructions. Photo + location → verdict in ~15 s.
-
-AWS-native alternative: AWS End User Messaging Social → link a WhatsApp Business account → choose an SNS topic → redeploy with `WhatsAppTopicArn=<topic>`.
-
-## 7. DrainReady
-Reporting needs no setup. Dispatchers open **🕳️ Blocked drains**, tap a blockage, expand **Dispatcher**, paste the **AdminToken**, then assign a worker and upload the after-photo. The drain is only marked cleared if the after-photo shows a clear drain. Check the numbers on the **Impact** tab. Local test: run `scripts/local_api.py` (access code `demo`).
-
-## 7a. Rain across India and the live cities
-- **Rain across India now:** tap the rain pill in the toolbar. `GET /rain/india` reads Open-Meteo for ~50 cities (cached 5 min). It is model data, not rain-gauge readings, and says so. Tapping a city shows its recent news and social posts (`GET /rain/india/posts`: Google News, Bluesky, Mastodon, plus Reddit/X/YouTube if keys are set). On a calm day it correctly reports that nothing was found.
-- **Thiruvananthapuram** is a full live city (road graph, cited hotspots, rain scheduler and social ingest). After `sam deploy`, run `build_graph.py --city thiruvananthapuram --bucket $BUCKET` and `seed_hotspots.py --city thiruvananthapuram --table $HOTSPOTS` (only the three hotspots with a citation are seeded). Add another live city by adding it to `config.CITIES`, `AREAS` in `build_graph.py`, and a hotspot file.
-
-## 7b. Google Maps basemap (optional)
-Set **`VITE_GOOGLE_MAPS_API_KEY`** to show Google's map instead of Amazon Location / OpenStreetMap. Pins, routes and panels are identical. Google's tiles can only be used through Google's own SDK, so this is a separate map component (`GoogleMapView`) chosen automatically when the key is set; if Google cannot load or rejects the key the app falls back to the other map and says why.
-1. [Google Cloud console](https://console.cloud.google.com/google/maps-apis/) → pick or create a project and **enable billing** (Maps has a free monthly allowance, but billing must be on).
-2. **APIs & Services → Library → "Maps JavaScript API" → Enable.**
-3. **Credentials → Create credentials → API key**, then restrict it: *Websites* (HTTP referrers) = `https://main.<id>.amplifyapp.com/*` and `http://localhost:5173/*`, and *API restrictions* = Maps JavaScript API only. The key ships in the page, so the restrictions are what protect it.
-4. Amplify → environment variables → `VITE_GOOGLE_MAPS_API_KEY`, redeploy. Locally: put it in `frontend/.env.local`.
-Notes: Google's logo and terms stay visible (the map stops above the button row on phones). Address search still uses Amazon Location Places. Using Google for the basemap means the map no longer uses Amazon Location (the rest of the app is still on AWS).
-
-## 8. Sign-in and saved places (Amazon Cognito)
-The stack creates a Cognito user pool and a web app client. After `sam deploy`:
-```bash
-aws cloudformation describe-stacks --stack-name scooter-cross --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" --output text
-```
-Set that value as **`VITE_COGNITO_CLIENT_ID`** (and `VITE_COGNITO_REGION=ap-south-1`) in Amplify, then redeploy the frontend. Without it the sign-in button is hidden. New users get a confirmation code by email (Cognito's built-in sender allows ~50 emails/day: fine for a demo). Signed-in users get saved places (Home, Work, others, max 20) that show as one-tap chips in the route screen. `VITE_AUTH_MODE=mock` is for local development only: never set it in Amplify.
-
-## 9. Testing DrainReady on real AWS
-```bash
-python scripts/smoke_drains.py --api <ApiUrl> --admin-token <AdminToken> --photo ~/drain.jpg
-```
-It checks upload, S3, analysis (and which path ran: AI, labelled fallback, or an explicit error with the real cause), retry, dispatcher assignment, and that an after-photo only clears a drain when AI verification succeeds. If Bedrock is unavailable the report is kept, labelled "AI analysis unavailable", and a dispatcher confirms the clearance manually. Check the `analysisError` field to see the real AWS error. Logs: `sam logs --stack-name scooter-cross -n DrainAnalyzeFunction --tail`.
-
-**Bedrock notes:** the code sends no `temperature` (Claude 5-family models reject it with `ValidationException`; set `BEDROCK_TEMPERATURE` only for older models). A brand-new account may also have every on-demand Bedrock quota at 0 until AWS approves a quota request.
-
-## 10. Troubleshooting
-```bash
-sam logs --stack-name scooter-cross -n AnalyzeFunction --tail
-```
-| Symptom | Fix |
-|---|---|
-| Report stuck on "analysing", Bedrock `AccessDeniedException` | Model access form not done, or wrong model ID/region |
-| CORS error in browser | `AllowedOrigin` must exactly equal the Amplify URL |
-| "Routing is not available for this city" | Graph not uploaded (step 3) |
-| WhatsApp silent / "bad Twilio signature" | Webhook URL must exactly match the output; check the auth token in SSM |
-| No social pins | Normal when nobody is posting about waterlogging; check `SocialIngestFunction` logs |
-
----
-
-## What's left before submission (11 Oct, 08:00 IST)
-- [ ] **Accuracy numbers**: 20–30 photos with known depth in `data/eval_set.csv` → `cd backend && ../.venv/bin/python -m tests.eval_depth` → paste the numbers into the README.
-- [ ] **Hotspots**: add citations for Pragati Maidan tunnel, Moolchand and ITO (`verified: false` now), and verify Gurugram/Kochi police handles in `backend/common/social.py` (`OFFICIAL_HANDLES`).
-- [ ] **Video (3 min)**: problem → photo verdict (EN + HI) → Kochi live rain banner → India rain view → "scooter detours, bus goes" comparison → WhatsApp report → AWS architecture + accuracy numbers.
-- [ ] Optional: AWS Builder Center blog post.
-
-## Cost + teardown
-Mostly free tier. Bedrock is roughly ₹1 per photo, plus small social-extraction calls. Set a $10 budget alert. After the hackathon:
-```bash
-aws s3 rm s3://$BUCKET --recursive && sam delete --stack-name scooter-cross
-```
+Use the account owner's cost controls and operational procedure. Any teardown
+is a separately approved destructive operation: confirm data backups, effects
+on the existing app and users, and ownership of every resource first. Do not
+use teardown or stack deletion as a rollback for this feature.
