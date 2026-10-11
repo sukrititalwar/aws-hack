@@ -34,8 +34,13 @@ if command -v npx &>/dev/null; then
 fi
 
 echo ""
+PYTHON_BIN="python3"
+if [ -f "$DIR/.venv/bin/python" ]; then
+  PYTHON_BIN="$DIR/.venv/bin/python"
+fi
+
 echo "Starting local Python API on 0.0.0.0:8787..."
-python3 scripts/local_api.py --host 0.0.0.0 &
+"$PYTHON_BIN" scripts/local_api.py --host 0.0.0.0 &
 API_PID=$!
 
 cleanup() {
